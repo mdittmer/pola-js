@@ -4,7 +4,7 @@
 # Compile TAJS.
 #
 
-source $(dirname "${BASH_SOURCE[0]}")/env.sh
+source "$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )/env.sh"
 
 cd "${TAJS_DIR}"
 ant -Ddebug=on compile
