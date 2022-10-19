@@ -2,3 +2,6 @@
 	path = TAJS
 	url = https://github.com/mdittmer/TAJS.git
 	branch = pola-js
+[submodule "artifact-executor"]
+	path = artifact-executor
+	url = https://github.com/mdittmer/artifact-executor.git
