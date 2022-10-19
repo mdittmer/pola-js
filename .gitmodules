@@ -1,0 +1,4 @@
+[submodule "TAJS"]
+	path = TAJS
+	url = https://github.com/mdittmer/TAJS.git
+	branch = pola-js
