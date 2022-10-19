@@ -1,0 +1,61 @@
+#include "flow-sensitive-points-to/flow-sensitive-points-to.dl"
+
+// The module at file path `sourceModulePath` invokes the Node host
+// object/function `require()` with the string argument `moduleString`.
+.decl nodeRequireSourceTarget(sourceModulePath: symbol, moduleString: symbol)
+nodeRequireSourceTarget(smp, ms) :-
+  nodeRequire(cn, ms),
+  nodeSourceLocation(cn, [smp], _, _, _, _).
+
+// The call flowgraph node `callNode` is an invocation of the Node host
+// object/function `require()` with the string argument `moduleString`.
+.decl nodeRequire(callNode: NodeID, moduleString: symbol)
+nodeRequire(cn, ms) :-
+  stringConstantNodeRequire(cn, ms).
+
+// The call flowgraph node `callNode` is an invocation of the Node host
+// object/function `require()` inside the function `containingFunction`, with
+// the `require()` argument passed via `argumentRegister`.
+.decl nodeRequireAny(callNode: NodeID, containingFunction: FunctionID, argumentRegister: RegisterID)
+nodeRequireAny(cn, cf, ar) :-
+  callNode(cn, _, nil /* not array/regexp literal constructor */, 0 /* not constructor */, _, fr, _, _, [ar, _]),
+  basicBlockNode(b, cn),
+  functionBasicBlock(cf, b),
+  // TODO: Should `require` be tracked as a host object to ensure that no
+  // aliased invocations of `require()` are missed?
+  inMayPointTo(cn, $StackNode($Variable($DefaultGlobalScope(), "require")), nil, $AbstractNode($HeapNode($ReadAllocation(ra)))),
+  inMayPointTo(cn, $StackNode($Register(cf, fr)), nil, $AbstractNode($HeapNode($ReadAllocation(ra)))).
+
+// The call flowgraph node `callNode` is an invocation of the Node host
+// object/function `require()` with the string argument `moduleString`.
+.decl stringConstantNodeRequire(callNode: NodeID, moduleString: symbol)
+stringConstantNodeRequire(cn, ms) :-
+  nodeRequireAny(cn, cf, ar),
+  inMayPointTo(cn, $StackNode($Register(cf, ar)), nil, $ConstantNode($StringConstant(ms))).
+
+// The call flowgraph node `callNode` is an invocation of the Node host
+// object/function `require()` with the non-string argument `nonStringConstant`.
+.decl nonStringConstantNodeRequire(callNode: NodeID, nonStringConstant: PointToNode)
+nonStringConstantNodeRequire(cn, nsc) :-
+  nodeRequireAny(cn, cf, ar),
+  inMayPointTo(cn, $StackNode($Register(cf, ar)), nil, $ConstantNode($NumberConstant(nc))),
+  nsc = $ConstantNode($NumberConstant(nc)).
+nonStringConstantNodeRequire(cn, nsc) :-
+  nodeRequireAny(cn, cf, ar),
+  inMayPointTo(cn, $StackNode($Register(cf, ar)), nil, $ConstantNode($BooleanConstant(bc))),
+  nsc = $ConstantNode($BooleanConstant(bc)).
+nonStringConstantNodeRequire(cn, nsc) :-
+  nodeRequireAny(cn, cf, ar),
+  inMayPointTo(cn, $StackNode($Register(cf, ar)), nil, nsc),
+  nsc = $ConstantNode($UndefinedNode()).
+nonStringConstantNodeRequire(cn, nsc) :-
+  nodeRequireAny(cn, cf, ar),
+  inMayPointTo(cn, $StackNode($Register(cf, ar)), nil, nsc),
+  nsc = $ConstantNode($NullNode()).
+nonStringConstantNodeRequire(cn, nsc) :-
+  nodeRequireAny(cn, cf, ar),
+  inMayPointTo(cn, $StackNode($Register(cf, ar)), nil, $AbstractNode(an)),
+  nsc = $AbstractNode(an).
+
+#include "node-require/flow-sensitive-points-to.dl"
+#include "node-require/errors.dl"

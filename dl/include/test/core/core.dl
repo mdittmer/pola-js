@@ -1,0 +1,38 @@
+// Implicit dependency: "core/core.dl"
+
+.decl nameFunction(name: symbol, fileSuffix: symbol, line: LineNumber, col: ColumnNumber)
+
+.decl nameNode(name: symbol, nodeType: NodeType, fileSuffix: symbol, line: LineNumber, col: ColumnNumber)
+
+.decl functionByName(function: FunctionID, name: symbol)
+functionByName(f, n) :-
+  nameFunction(n, s, l, c),
+  functionSourceLocation(f, [path], l, c, _, _),
+  strlen(path) >= strlen(s),
+  s = substr(path, strlen(path) - strlen(s), strlen(path)).
+
+.decl nodeByName(node: NodeID, name: symbol)
+nodeByName(node, n) :-
+  nameNode(n, t, s, l, c),
+  nodeSourceLocation(node, [path], l, c, _, _),
+  nodeType(node, t),
+  strlen(path) >= strlen(s),
+  s = substr(path, strlen(path) - strlen(s), strlen(path)).
+
+.type CoreError =
+  MissingFunction { name: symbol, fileSuffix: symbol, line: LineNumber, col: ColumnNumber } |
+  MissingNode { name: symbol, nodeType: NodeType, fileSuffix: symbol, line: LineNumber, col: ColumnNumber } |
+  MultipleNodes { name: symbol, nodeType: NodeType, fileSuffix: symbol, line: LineNumber, col: ColumnNumber, node1: NodeID, node2: NodeID }
+
+.decl coreError(coreError: CoreError)
+coreError($MissingFunction(n, s, l, c)) :-
+  nameFunction(n, s, l, c),
+  !functionByName(_, n).
+coreError($MissingNode(n, t, s, l, c)) :-
+  nameNode(n, t, s, l, c),
+  !nodeByName(_, n).
+coreError($MultipleNodes(n, t, s, l, c, n1, n2)) :-
+  nameNode(n, t, s, l, c),
+  nodeByName(n1, n),
+  nodeByName(n2, n),
+  n1 < n2.

@@ -1,0 +1,2 @@
+var require;
+require('abc');

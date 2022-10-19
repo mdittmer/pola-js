@@ -1,0 +1,68 @@
+#include "flow-sensitive-points-to/flow-sensitive-points-to.dl"
+#include "test/core/core.dl"
+#include "test/flow-based-scoping/flow-based-scoping.dl"
+
+nameNode("xWith", "BeginWithNode", "with-scope.js", 1, 1).
+nameNode("xRead", "ReadVariableNode", "with-scope.js", 1, 7).
+nameFunction("f", "with-scope.js", 2, 4).
+nameNode("yWith", "BeginWithNode", "with-scope.js", 3, 5).
+nameNode("yRead", "ReadVariableNode", "with-scope.js", 3, 11).
+nameNode("zCatch", "CatchNode", "with-scope.js", 6, 9).
+nameNode("zWith", "BeginWithNode", "with-scope.js", 6, 9).
+
+nameNode("aRead1", "ReadVariableNode", "with-scope.js", 5, 9).
+nameNode("aRead2", "ReadVariableNode", "with-scope.js", 7, 9).
+nameNode("bWrite", "WriteVariableNode", "with-scope.js", 8, 9).
+nameNode("zRead", "ReadVariableNode", "with-scope.js", 9, 9).
+nameNode("cDecl", "DeclareVariableNode", "with-scope.js", 10, 13).
+nameNode("cWrite", "WriteVariableNode", "with-scope.js", 13, 5).
+
+expectMayVariableScopeBinding("x", $DefaultGlobalScope(), n) :-
+  nodeByName(n, "xRead").
+
+expectMayVariableScopeBinding("y", $WithScope(w), n) :-
+  nodeByName(w, "xWith"),
+  nodeByName(n, "yRead").
+expectMayVariableScopeBinding("y", $DefaultGlobalScope(), n) :-
+  nodeByName(n, "yRead").
+
+expectMayVariableScopeBinding("a", $WithScope(w), n) :-
+  nodeByName(w, "yWith"),
+  nodeByName(n, "aRead1").
+expectMayVariableScopeBinding("a", $FunctionScope(f), n) :-
+  functionByName(f, "f"),
+  nodeByName(n, "aRead1").
+
+expectMayVariableScopeBinding("a", $WithScope(w), n) :-
+  nodeByName(w, "zWith"),
+  nodeByName(n, "aRead2").
+expectMayVariableScopeBinding("a", $WithScope(w), n) :-
+  nodeByName(w, "yWith"),
+  nodeByName(n, "aRead2").
+expectMayVariableScopeBinding("a", $FunctionScope(f), n) :-
+  functionByName(f, "f"),
+  nodeByName(n, "aRead2").
+
+expectMayVariableScopeBinding("b", $WithScope(w), n) :-
+  nodeByName(w, "zWith"),
+  nodeByName(n, "bWrite").
+expectMayVariableScopeBinding("b", $WithScope(w), n) :-
+  nodeByName(w, "yWith"),
+  nodeByName(n, "bWrite").
+expectMayVariableScopeBinding("b", $WithScope(w), n) :-
+  nodeByName(w, "xWith"),
+  nodeByName(n, "bWrite").
+expectMayVariableScopeBinding("b", $DefaultGlobalScope(), n) :-
+  nodeByName(n, "bWrite").
+
+expectMayVariableScopeBinding("z", $WithScope(w), n) :-
+  nodeByName(w, "zWith"),
+  nodeByName(n, "zRead").
+
+expectMayVariableScopeBinding("c", $FunctionScope(f), n) :-
+  functionByName(f, "f"),
+  nodeByName(n, "cWrite").
+
+.output error
+.output coreError
+.output scopingError

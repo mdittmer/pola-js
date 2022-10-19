@@ -1,0 +1,15 @@
+// Implicit dependency: "flow-sensitive-points-to/flow-sensitive-points-to.dl"
+
+.decl expectParameterAccess(function: FunctionID, src: Abstract, type: AuthorityType, property: AuthorityProperty, nextAuthority: NextAuthority)
+
+.type ParameterAccessError =
+  UnexpectedParameterAccess { function: FunctionID, src: Abstract, type: AuthorityType, property: AuthorityProperty, nextAuthority: NextAuthority } |
+  MissingParameterAccess { function: FunctionID, src: Abstract, type: AuthorityType, property: AuthorityProperty, nextAuthority: NextAuthority }
+
+.decl parameterAccessError(error: ParameterAccessError)
+parameterAccessError($UnexpectedParameterAccess(f, src, t, p, na)) :-
+  parameterAccess(f, src, t, p, na),
+  !expectParameterAccess(f, src, t, p, na).
+parameterAccessError($MissingParameterAccess(f, src, t, p, na)) :-
+  expectParameterAccess(f, src, t, p, na),
+  !parameterAccess(f, src, t, p, na).

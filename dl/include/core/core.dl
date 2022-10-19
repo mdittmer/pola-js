@@ -1,0 +1,226 @@
+//
+// Errors
+//
+
+// All errors that could affect the soundness of output should imply an
+// `error()` by converting any relevant structured information into an error
+// string.
+.decl error(err: symbol)
+
+// Warnings warn of issues that that could have serious effects on precision,
+// but do not compromise soundness. The same implication convention as
+// `error()` applies to warning strings.
+.decl warning(warn: symbol)
+
+//
+// TAJS Flow graph identifiers.
+//
+
+.type FunctionID <: number
+.type BasicBlockID <: number
+.type NodeID <: number
+.type VariableLabel <: symbol
+.type OptionalVariableLabel = [ variableLabel: VariableLabel ]
+.type RegisterID <: number // NOTE: RegisterID = -1 => NO_VALUE, often denotes "look elsewhere for information".
+.type ArgumentList = [ register: RegisterID, next: ArgumentList ]
+.type LineNumber <: number
+.type ColumnNumber <: number
+.type OptionalPath = [ optionalPath: symbol ]
+
+//
+// Core object allocation model.
+//
+
+// Allocations are either an "ordinary" JavaScript object allocation, or else
+// a synthetic allocation. A "parameter allocation" is generated to trace
+// points-to data about the value passed into a function as a parameter. A
+// "this allocation" similarly traces points-to information about `this` in
+// functions.
+.type OrdinaryHeapValue <: NodeID
+.type BaseHeapValue <: NodeID
+.type PropertyHeapValue <: NodeID
+.type ReadHeapValue <: NodeID
+.type HostID <: number
+.type HostValue <: number
+.type Allocation =
+  // JavaScript object allocation.
+  OrdinaryAllocation { allocationNode: OrdinaryHeapValue } |
+  // Synthetic allocation to track object that parameter refers to at function
+  // entry.
+  ParameterAllocation { function: FunctionID, variable: VariableLabel } |
+  // Synthetic allocation to track object that `this` refers to at function
+  // entry
+  ThisAllocation { function: FunctionID } |
+  // Synthetic allocation to model result of base register lookup when register
+  // does not point to anything.
+  BaseAllocation { readNode: BaseHeapValue } |
+  // Synthetic allocation to model result of property register lookup when
+  // register does not point to anything.
+  PropertyAllocation { readNode: PropertyHeapValue } |
+  // Synthetic allocation to model result of a read when no result is otherwise
+  // deduced via the heap model.
+  ReadAllocation { readNode: ReadHeapValue } |
+  // Allocations associated with host objects provided by a particular runtime.
+  // For example, the NodeJS implementation of CommonJS modules exposes the
+  // global `module` object, and `module.exports` defines the module's exposed
+  // interface. In addition, the global `exports` is initialized to the same
+  // object as the initial value of `module.exports`. These host objects are
+  // modeled using a globally unique HostID for NodeJS and NodeJS-unique
+  // HostValue for each object.
+  HostAllocation { host: HostID, value: HostValue }
+.type Scope =
+  DefaultGlobalScope {} |
+  FunctionScope { function: FunctionID } |
+  WithScope { beginWithNode: NodeID }
+.type Slot = Register { function: FunctionID, register: RegisterID } | Variable { scope: Scope, variable: VariableLabel }
+
+//
+// TAJS flow graph input predicates.
+//
+
+// Basic source structure.
+.decl mainFunction(function: FunctionID)
+.input mainFunction
+.decl nodeSourceLocation(node: NodeID, optionalPath: OptionalPath, lineNumber: LineNumber, columnNumber: ColumnNumber, endLineNumber: LineNumber, endColumnNumber: ColumnNumber)
+.input nodeSourceLocation
+.decl basicBlockFirstNode(basicBlock: BasicBlockID, node: NodeID)
+.input basicBlockFirstNode
+.decl basicBlockLastNode(basicBlock: BasicBlockID, node: NodeID)
+.input basicBlockLastNode
+.decl basicBlockNode(basicBlock: BasicBlockID, node: NodeID)
+.input basicBlockNode
+.decl basicBlockScope(basicBlock: BasicBlockID, scope: Scope)
+.input basicBlockScope
+.decl functionBasicBlock(function: FunctionID, basicBlock: BasicBlockID)
+.input functionBasicBlock
+.decl functionEstimatedSourceLocation(function: FunctionID, optionalPath: OptionalPath, line: LineNumber, column: ColumnNumber, endLineNumber: LineNumber, endColumnNumber: ColumnNumber)
+.input functionEstimatedSourceLocation
+.decl functionEntryBasicBlock(function: FunctionID, entryBasicBlock: BasicBlockID)
+.input functionEntryBasicBlock
+.decl functionOrdinaryExitBasicBlock(function: FunctionID, ordinaryExitBasicBlock: BasicBlockID)
+.input functionOrdinaryExitBasicBlock
+.decl functionExceptionalExitBasicBlock(function: FunctionID, exceptionalExitBasicBlock: BasicBlockID)
+.input functionExceptionalExitBasicBlock
+.decl fromToNodeEdge(fromNode: NodeID, toNode: NodeID)
+.input fromToNodeEdge
+
+.decl functionExitBasicBlock(function: FunctionID, exitBasicBlock: BasicBlockID)
+functionExitBasicBlock(f, e) :- functionOrdinaryExitBasicBlock(f, e).
+functionExitBasicBlock(f, e) :- functionExceptionalExitBasicBlock(f, e).
+
+// Variable declarations.
+.decl functionParameter(function: FunctionID, parameterIndex: number, parameter: VariableLabel)
+.input functionParameter
+.decl functionLocalVariable(function: FunctionID, variable: VariableLabel)
+.input functionLocalVariable
+.decl catchLocalVariable(catchNode: NodeID, variable: VariableLabel)
+.input catchLocalVariable
+
+// Source information scraped from `package.json` files.
+.decl packageMainSourceLocation(packageJsonPath: symbol, packageMainPath: OptionalPath)
+.input packageMainSourceLocation
+
+// Nodes.
+.type BinaryOperator <: symbol // Operators: ADD, SUB, MUL, DIV, REM, AND, OR, XOR, EQ, NE, LT, GE, LE, GT, SHL, SHR, USHR, SEQ, SNE, INSTANCEOF.
+.decl binaryOperatorNode(node: NodeID, resultRegister: RegisterID, leftArgumentRegister: RegisterID, rightArgumentRegister: RegisterID, binaryOperator: BinaryOperator)
+.input binaryOperatorNode
+.type LiteralConstructorKind = [ kind: symbol ] // Kinds: nil, ARRAY, REGEXP.
+.type IsConstructor <: number // 0 = not constructor call; 1 = constructor call.
+.type String = [ string: symbol ]
+.decl callNode(node: NodeID, resultRegister: RegisterID, literalConstructorKind: LiteralConstructorKind, isConstructor: IsConstructor, baseRegister: RegisterID, functionRegister: RegisterID, propertyRegister: RegisterID, propertyString: String, arguments: ArgumentList)
+.input callNode
+.decl catchNode(node: NodeID, variable: OptionalVariableLabel, valueRegister: RegisterID, scopeObjectRegister: RegisterID)
+.input catchNode
+.type ConstantType <: symbol // Types: NUMBER, STRING, BOOLEAN, UNDEFINED, NULL.
+.type Number <: float
+.type Bool <: number // 0 = false; 1 = true.
+.decl constantNode(node: NodeID, resultRegister: RegisterID, constantType: ConstantType, number: Number, string: String, bool: Bool)
+.input constantNode
+.decl deletePropertyNode(node: NodeID, resultRegister: RegisterID, baseRegister: RegisterID, propertyRegister: RegisterID, propertyString: String, variableName: OptionalVariableLabel)
+.input deletePropertyNode
+.decl beginWithNode(node: NodeID, objectRegister: RegisterID)
+.input beginWithNode
+.decl exceptionalReturnNode(node: NodeID)
+.input exceptionalReturnNode
+.type IsExpression <: number // 0 = not an expression (instead, a declaration); 1 = an expression.
+.type DomEventType = [ domEventType: symbol ] // Types: DOM_CONTENT_LOADED, LOAD, UNLOAD, KEYBOARD, MOUSE, UNKNOWN, OTHER, AJAX, TIMEOUT.
+.decl declareFunctionNode(node: NodeID, resultRegister: RegisterID, function: FunctionID, isExpression: IsExpression, domEventType: DomEventType)
+.input declareFunctionNode
+.decl beginForInNode(node: NodeID, objectRegister: RegisterID, propertyListRegister: RegisterID) // TODO: Do we need to store node IDs of `end_nodes` here, as done in Java?
+.decl ifNode(node: NodeID, conditionRegister: RegisterID) // TODO: Do we need to store `succ_true` and `succ_false` here, as done in Java?
+.decl endWithNode(node: NodeID)
+.input endWithNode
+.decl newObjectNode(node: NodeID, resultRegister: RegisterID)
+.input newObjectNode
+.decl nextPropertyNode(node: NodeID, propertyListRegister: RegisterID, propertyRegister: RegisterID)
+.input nextPropertyNode
+.decl hasNextPropertyNode(node: NodeID, resultRegister: RegisterID, propertyListRegister: RegisterID)
+.input hasNextPropertyNode
+.decl nopNode(node: NodeID, text: String)
+.input nopNode
+.decl readPropertyNode(node: NodeID, resultRegister: RegisterID, baseRegister: RegisterID, propertyRegister: RegisterID, propertyString: String)
+.input readPropertyNode
+.type KeepAbsent <: number // 0 = false; 1 = true; used for `typeof variable`.
+.decl readVariableNode(node: NodeID, resultRegister: RegisterID, variableName: VariableLabel, resultBaseRegister: RegisterID, keepAbsent: KeepAbsent)
+.input readVariableNode
+.decl returnNode(node: NodeID, returnValueRegister: RegisterID)
+.input returnNode
+.decl throwNode(node: NodeID, valueRegister: RegisterID)
+.input throwNode
+.type UnaryOperator <: symbol // Operators: COMPLEMENT, NOT, MINUS, PLUS, TYPEOF.
+.decl unaryOperatorNode(node: NodeID, resultRegister: RegisterID, argumentRegister: RegisterID, unaryOperator: UnaryOperator)
+.input unaryOperatorNode
+.decl declareVariableNode(node: NodeID, variableName: VariableLabel)
+.input declareVariableNode
+.type WritePropertyKind <: symbol // Kinds: GETTER, SETTER, ORDINARY.
+.type IsFromObjectLiteralPropertyDeclaration <: number // 0 = false; 1 = true.
+.decl writePropertyNode(node: NodeID, baseRegister: RegisterID, propertyRegister: RegisterID, propertyString: String, valueRegister: RegisterID, writePropertyKind: WritePropertyKind, isFromObjectLiteralPropertyDeclaration: IsFromObjectLiteralPropertyDeclaration)
+.input writePropertyNode
+.decl writeVariableNode(node: NodeID, variableName: VariableLabel, valueRegister: RegisterID)
+.input writeVariableNode
+.type EventDispatchType <: symbol // Types: DOM_CONTENT_LOADED, DOM_LOAD, DOM_UNLOAD, DOM_OTHER, ASYNC, TYPE_TESTS.
+.decl eventDispatcherNode(node: NodeID, eventDispatchType: EventDispatchType)
+.input eventDispatcherNode
+.decl endForInNode(node: NodeID) // TODO: Do we need to store node ID of `begin_node` here, as done in Java?
+.type IsNested <: number // 0 = false; 1 = true.
+.decl beginLoopNode(node: NodeID, isNested: IsNested) // TODO: Do we need to store node ID of `ifNode` here, as done in Java?
+.decl endLoopNode(node: NodeID) // TODO: Do we need to store node ID of `beginNode` here, as done in Java?
+
+//
+// Core inference.
+//
+
+// Capture node types. Also used for "node exists" via `nodeType(n, _)`.
+.type NodeType <: symbol // As listed below, with CamelCase; e.g., "BinaryOperatorNode".
+.decl nodeType(node: NodeID, nodeType: NodeType)
+nodeType(n, "BinaryOperatorNode") :- binaryOperatorNode(n, _, _, _, _).
+nodeType(n, "CallNode") :- callNode(n, _, _, _, _, _, _, _, _).
+nodeType(n, "CatchNode") :- catchNode(n, _, _, _).
+nodeType(n, "ConstantNode") :- constantNode(n, _, _, _, _, _).
+nodeType(n, "DeletePropertyNode") :- deletePropertyNode(n, _, _, _, _, _).
+nodeType(n, "BeginWithNode") :- beginWithNode(n, _).
+nodeType(n, "ExceptionalReturnNode") :- exceptionalReturnNode(n).
+nodeType(n, "DeclareFunctionNode") :- declareFunctionNode(n, _, _, _, _).
+nodeType(n, "BeginForInNode") :- beginForInNode(n, _, _).
+nodeType(n, "IfNode") :- ifNode(n, _).
+nodeType(n, "EndWithNode") :- endWithNode(n).
+nodeType(n, "NewObjectNode") :- newObjectNode(n, _).
+nodeType(n, "NextPropertyNode") :- nextPropertyNode(n, _, _).
+nodeType(n, "HasNextPropertyNode") :- hasNextPropertyNode(n, _, _).
+nodeType(n, "NopNode") :- nopNode(n, _).
+nodeType(n, "ReadPropertyNode") :- readPropertyNode(n, _, _, _, _).
+nodeType(n, "ReadVariableNode") :- readVariableNode(n, _, _, _, _).
+nodeType(n, "ReturnNode") :- returnNode(n, _).
+nodeType(n, "ThrowNode") :- throwNode(n, _).
+nodeType(n, "UnaryOperatorNode") :- unaryOperatorNode(n, _, _, _).
+nodeType(n, "DeclareVariableNode") :- declareVariableNode(n, _).
+nodeType(n, "WritePropertyNode") :- writePropertyNode(n, _, _, _, _, _, _).
+nodeType(n, "WriteVariableNode") :- writeVariableNode(n, _, _).
+nodeType(n, "EventDispatcherNode") :- eventDispatcherNode(n, _).
+nodeType(n, "EndForInNode") :- endForInNode(n).
+nodeType(n, "BeginLoopNode") :- beginLoopNode(n, _).
+nodeType(n, "EndLoopNode") :- endLoopNode(n).
+
+#include "core/scoping.dl"
+
+#include "core/errors.dl"

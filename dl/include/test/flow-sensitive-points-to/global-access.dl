@@ -1,0 +1,15 @@
+// Implicit dependency: "flow-sensitive-points-to/flow-sensitive-points-to.dl"
+
+.decl expectGlobalAccess(src: Abstract, type: AuthorityType, property: AuthorityProperty, nextAuthority: NextAuthority)
+
+.type GlobalAccessError =
+  UnexpectedGlobalAccess { src: Abstract, type: AuthorityType, property: AuthorityProperty, nextAuthority: NextAuthority } |
+  MissingGlobalAccess { src: Abstract, type: AuthorityType, property: AuthorityProperty, nextAuthority: NextAuthority }
+
+.decl globalAccessError(error: GlobalAccessError)
+globalAccessError($UnexpectedGlobalAccess(src, t, p, na)) :-
+  globalAccess(src, t, p, na),
+  !expectGlobalAccess(src, t, p, na).
+globalAccessError($MissingGlobalAccess(src, t, p, na)) :-
+  expectGlobalAccess(src, t, p, na),
+  !globalAccess(src, t, p, na).

@@ -1,0 +1,6 @@
+#include "flow-sensitive-points-to/flow-sensitive-points-to.dl"
+
+.output globalAccess
+.output parameterAccess
+.output warning
+.output error

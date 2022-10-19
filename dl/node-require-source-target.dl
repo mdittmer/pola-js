@@ -1,0 +1,5 @@
+#include "node-require/node-require.dl"
+
+.output nodeRequireSourceTarget
+.output warning
+.output error

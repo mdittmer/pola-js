@@ -1,0 +1,137 @@
+#include "core/core.dl"
+
+//
+// Lexical scoping. This cannot be managed in core because dynamic scope
+// depends on the analysis strategy. Note that "current scope" refers to the
+// tightest binding scope (i.e., innermose `with` or `function`) whereas
+// "default scope" refers to the scope where free variable references will
+// be defined (i.e., default global scope or `with` scope that may contain the
+// free variable).
+//
+
+// IN() scopes for a node, from $DefaultGlobalScope() through innermost scope.
+.decl inScope(node: NodeID, scope: Scope)
+// Base cases.
+inScope(n, $DefaultGlobalScope()) :-
+  nodeType(n, _).
+inScope(n, $FunctionScope(f)) :-
+  basicBlockFirstNode(b, n),
+  functionEntryBasicBlock(f, b).
+inScope(n, s) :-
+  fromToNodeEdge(out, n),
+  outScope(out, s).
+// Inductive cases.
+inScope(n, o) :-
+  outerInnerScope(o, i),
+  inScope(n, i).
+
+// OUT() scopes for a node, from $DefaultGlobalScope() through innermost scope.
+.decl outScope(node: NodeID, scope: Scope)
+outScope(n, s) :-
+  !endWithNode(n),
+  inScope(n, s).
+outScope(n, $WithScope(n)) :-
+  beginWithNode(n, _),
+  nodeSourceLocation(n, u, _, _, _, _),
+  u != nil.
+outScope(n, s) :-
+  endWithNode(n),
+  nodeSourceLocation(n, u, l, c, el, ec),
+  beginWithNode(bwn, _),
+  nodeSourceLocation(bwn, u, l, c, el, ec),
+  inScope(n, s),
+  u != nil,
+  s != $WithScope(bwn).
+
+// Parameter or local function-scope variable.
+.decl functionVariableDecl(function: FunctionID, variable: VariableLabel, declNode: NodeID)
+functionVariableDecl(f, v, n) :-
+  declareVariableNode(n, v),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+functionVariableDecl(f, v, e) :-
+  functionParameter(f, _, v),
+  functionEntryBasicBlock(f, b),
+  basicBlockFirstNode(b, e).
+
+// `v` in `catch (v) { ... }` variable declaration.
+.decl catchVariableDecl(beginWithNode: NodeID, variableLabel: VariableLabel, catchNode: NodeID)
+catchVariableDecl(bwn, v, cn) :-
+  catchNode(cn, [v], _, _),
+  fromToNodeEdge(cn, bwn),
+  // Binding should have inScope(n, $WithScope(bwn)), so using bwn is inconsistent.
+  // Use successors of bwn as "begin-with entry node"
+  beginWithNode(bwn, _).
+
+// Generalize variable declaration.
+.decl variableDecl(variableLabel: VariableLabel, decl: NodeID)
+variableDecl(v, d) :-
+  functionVariableDecl(_, v, d).
+variableDecl(v, d) :-
+  catchVariableDecl(_, v, d).
+
+// Generalize variable read.
+.decl variableRead(variableLabel: VariableLabel, readNode: NodeID)
+variableRead(v, n) :-
+  readVariableNode(n, _, v, _, _).
+
+// Generalize variable write.
+.decl variableWrite(variableLabel: VariableLabel, writeNode: NodeID)
+variableWrite(v, n) :-
+  writeVariableNode(n, v, _).
+variableWrite(v, n) :-
+  deletePropertyNode(n, _, _, _, _, [v]).
+
+// Generalize variable read/write.
+.decl variableReference(variablleLabel: VariableLabel, node: NodeID)
+variableReference(v, n) :-
+  variableRead(v, n).
+variableReference(v, n) :-
+  variableWrite(v, n).
+
+// `variable` referenced in `bindingNode` *definitely* binds to `scope` or one
+// of its descendant scopes.
+.decl mustVariableScopeBinding(variable: VariableLabel, scope: Scope, bindingNode: NodeID)
+mustVariableScopeBinding(v, $FunctionScope(f), n) :-
+  variableReference(v, n),
+  inScope(n, $FunctionScope(f)),
+  functionVariableDecl(f, v, _).
+mustVariableScopeBinding(v, $WithScope(bwn), n) :-
+  variableReference(v, n),
+  inScope(n, $WithScope(bwn)),
+  catchVariableDecl(bwn, v, _).
+
+.decl mustVariableAnyScopeBinding(variable: VariableLabel, scope: Scope, bindingNode: NodeID)
+mustVariableAnyScopeBinding(v, o, n) :-
+  mustVariableScopeBinding(v, o, n).
+mustVariableAnyScopeBinding(v, o, n) :-
+  outerInnerScope(o, i),
+  mustVariableAnyScopeBinding(v, i, n).
+
+// `variable` may be bound to `scope` via `bindingNode`, ignoring shadowing
+// declarations.
+.decl mayVariableScopeBindingNaive(variable: VariableLabel, scope: Scope, bindingNode: NodeID)
+mayVariableScopeBindingNaive(v, $FunctionScope(f), n) :-
+  mustVariableScopeBinding(v, $FunctionScope(f), n).
+mayVariableScopeBindingNaive(v, $WithScope(bwn), n) :-
+  mustVariableScopeBinding(v, $WithScope(bwn), n).
+mayVariableScopeBindingNaive(v, $WithScope(bwn), n) :-
+  variableReference(v, n),
+  inScope(n, $WithScope(bwn)).
+mayVariableScopeBindingNaive(v, $DefaultGlobalScope(), n) :-
+  variableReference(v, n).
+
+// `variable` may be bound to `scope` via `bindingNode`, accounting for
+// shadowing declarations.
+.decl mayVariableScopeBinding(variable: VariableLabel, scope: Scope, bindingNode: NodeID)
+mayVariableScopeBinding(v, o, b) :-
+  mayVariableScopeBindingNaive(v, o, b),
+  outerInnerScope(o, i),
+  inScope(b, i),
+  !mustVariableAnyScopeBinding(v, i, b).
+mayVariableScopeBinding(v, s, b) :-
+  mayVariableScopeBindingNaive(v, s, b),
+  c = count : { outerInnerScope(s, i), inScope(b, i) },
+  c = 0.
+
+#include "flow-based-scoping/errors.dl"

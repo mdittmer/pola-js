@@ -1,0 +1,15 @@
+// Implicit dependency: "core/core.dl" "core/scoping.dl"
+
+.decl expectOuterInnerScope(outer: Scope, inner: Scope)
+
+.type ScopingError =
+  MissingOuterInnerScope { outer: Scope, inner: Scope } |
+  UnexpectedOuterInnerScope { outer: Scope, inner: Scope }
+
+.decl scopingError(scopingError: ScopingError)
+scopingError($MissingOuterInnerScope(o, i)) :-
+  expectOuterInnerScope(o, i),
+  !outerInnerScope(o, i).
+scopingError($UnexpectedOuterInnerScope(o, i)) :-
+  !expectOuterInnerScope(o, i),
+  outerInnerScope(o, i).

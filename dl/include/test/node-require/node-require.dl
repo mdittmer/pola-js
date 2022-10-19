@@ -1,0 +1,15 @@
+// Implicit dependency: "node-require/node-require.dl"
+
+.decl expectNodeRequire(callNode: NodeID, moduleString: symbol)
+
+.type NodeRequireError =
+  UnexpectedNodeRequire { callNode: NodeID, moduleString: symbol } |
+  MissingNodeRequire { callNode: NodeID, moduleString: symbol }
+
+.decl nodeRequireError(error: NodeRequireError)
+nodeRequireError($UnexpectedNodeRequire(cn, ms)) :-
+  nodeRequire(cn, ms),
+  !expectNodeRequire(cn, ms).
+nodeRequireError($MissingNodeRequire(cn, ms)) :-
+  expectNodeRequire(cn, ms),
+  !nodeRequire(cn, ms).

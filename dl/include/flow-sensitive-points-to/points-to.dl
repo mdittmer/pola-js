@@ -1,0 +1,161 @@
+// Implicit dependencies: "core/core.dl" "flow-sensitive-points-to/types.dl"
+
+//
+// May-point-to predicates.
+//
+
+// Flowgraph IN() function.
+.decl inMayPointToWithCause(cause: NodeID, node: NodeID, source: Abstract, edge: PointToEdge, sink: PointToNode)
+.decl inMayPointTo(node: NodeID, source: Abstract, edge: PointToEdge, sink: PointToNode)
+inMayPointTo(n, src, e, sink) :- inMayPointToWithCause(_, n, src, e, sink).
+
+// Flowgraph OUT() function.
+.decl outMayPointToWithCause(cause: NodeID, node: NodeID, source: Abstract, edge: PointToEdge, sink: PointToNode)
+.decl outMayPointTo(node: NodeID, source: Abstract, edge: PointToEdge, sink: PointToNode)
+outMayPointTo(n, src, e, sink) :- outMayPointToWithCause(_, n, src, e, sink).
+
+// Node's IN() is union predecessors' OUT().
+inMayPointToWithCause(c, n, src, e, sink) :-
+  fromToNodeEdge(out, n),
+  outMayPointToWithCause(c, out, src, e, sink).
+
+// Transfer functions are extensive: Copy IN() to OUT(); transfer functions add
+// ADDITIONAL facts.
+outMayPointToWithCause(c, n, src, e, sink) :-
+  inMayPointToWithCause(c, n, src, e, sink).
+
+// Initialize `this`.
+inMayPointToWithCause(n, n, $StackNode($Variable($FunctionScope(f), "this")), nil, $AbstractNode($HeapNode($ThisAllocation(f)))) :-
+  basicBlockFirstNode(b, n),
+  functionEntryBasicBlock(f, b).
+
+// Initialize parameters.
+inMayPointToWithCause(n, n, $StackNode($Variable($FunctionScope(f), v)), nil, $AbstractNode($HeapNode($ParameterAllocation(f, v)))) :-
+  basicBlockFirstNode(b, n),
+  functionEntryBasicBlock(f, b),
+  functionParameter(f, _, v).
+
+/*
+// TODO: What was this here for?
+inMayPointToWithCause() :-
+  callNode(cn, _, _, _, _, fr, _, _, args),
+  basicBlockNode(b, cn),
+  functionBasicBlock(caller, b),
+  inMayPointTo(cn, $StackNode($Register(caller, fr)), nil, $FunctionNode(callee)),
+
+  basicBlockFirstNode(b, n),
+  functionEntryBasicBlock(f, b),
+  functionParameter(f, _, v).
+*/
+
+// Initialize function-cross-reference variables. Whenever two functions refer
+// to the same variable, bind that their exit node values to each other's entry
+// nodes. This is a gross over-approximation and it only works because points-to
+// model only add ADDITIONAL facts.
+inMayPointToWithCause(c, n, $StackNode($Variable(s, v)), nil, o) :-
+  variableReference(v, c),
+  mayVariableScopeBinding(v, s, c),
+  basicBlockNode(cb, c),
+  functionBasicBlock(cf, cb),
+  variableReference(v, r),
+  mayVariableScopeBinding(v, s, r),
+  basicBlockNode(rb, r),
+  functionBasicBlock(rf, rb),
+  functionEntryBasicBlock(rf, reb),
+  basicBlockFirstNode(reb, n),
+  cf != rf,
+  functionExitBasicBlock(cf, ceb),
+  basicBlockLastNode(ceb, cen),
+  outMayPointTo(cen, $StackNode($Variable(s, v)), nil, o).
+
+//
+// Initialize reads that do not refer to a value.
+//
+// Logic that uses lookups over read operations often only produces facts when
+// the lookup yields some value.
+//
+// Examples:
+//
+//   `variableDoesNotExist.propertyDoesNotExist`
+//     The property lookup will find nothing in the base register and no value
+//     resulting from the lookup.
+//
+//   `variableExists[variableDoesNotExist]`
+//     The property lookup will find nothing in the property register and
+//     and no value resulting from the lookup.
+//
+//   `(function(o) { o.p; })({})`
+//     The property lookup will find no value resulting from the lookup.
+//
+// Based on the examples it is clear that base register lookup, property
+// register lookup, and read result lookup all may require synthetic values to
+// ensure that logic that expects some result from read operations to function
+// properly.
+//
+
+// TODO: What has to happen with `baseRegister` in readVariableNode?
+inMayPointToWithCause(n, n, $StackNode($Variable(s, v)), nil, $AbstractNode($HeapNode($ReadAllocation(n)))) :-
+  readVariableNode(n, r, v, _, _),
+  r >= 0,
+  mayVariableScopeBinding(v, s, n).
+
+.decl propertyReadNeedsBase(readNode: NodeID, baseRegister: RegisterID)
+propertyReadNeedsBase(n, br) :-
+  readPropertyNode(n, _, br, _, _),
+  br >= 0.
+
+.decl propertyReadNeedsProperty(readNode: NodeID, propertyRegister: RegisterID)
+propertyReadNeedsProperty(n, pr) :-
+  readPropertyNode(n, _, _, pr, ps),
+  pr >= 0,
+  ps = nil.
+
+.decl propertyReadNeedsValue(readNode: NodeID)
+propertyReadNeedsValue(n) :-
+  readPropertyNode(n, _, br, pr, ps),
+  br >= 0,
+  pr >= 0,
+  ps = nil.
+propertyReadNeedsValue(n) :-
+  readPropertyNode(n, _, br, pr, ps),
+  br >= 0,
+  pr < 0,
+  ps = [_].
+
+inMayPointToWithCause(n, n, $StackNode($Register(f, br)), nil, $AbstractNode($HeapNode($BaseAllocation(n)))) :-
+  propertyReadNeedsBase(n, br),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+
+inMayPointToWithCause(n, n, $StackNode($Register(f, pr)), nil, $AbstractNode($HeapNode($PropertyAllocation(n)))) :-
+  propertyReadNeedsProperty(n, pr),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+
+inMayPointToWithCause(n, n, bv, [$PropertyName(pn)], $AbstractNode($HeapNode($ReadAllocation(n)))) :-
+  readPropertyNode(n, _, br, pr, ps),
+  propertyReadNeedsValue(n),
+  br >= 0,
+  pr >= 0,
+  ps = nil,
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(bv)),
+  inMayPointTo(n, $StackNode($Register(f, pr)), nil, $ConstantNode(pn)).
+
+inMayPointToWithCause(n, n, bv, [$Wildcard(a)], $AbstractNode($HeapNode($ReadAllocation(n)))) :-
+  readPropertyNode(n, _, br, pr, ps),
+  propertyReadNeedsValue(n),
+  br >= 0,
+  pr >= 0,
+  ps = nil,
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(bv)),
+  inMayPointTo(n, $StackNode($Register(f, pr)), nil, $AbstractNode(a)).
+
+inMayPointToWithCause(n, n, bv, [$PropertyName($StringConstant(psv))], $AbstractNode($HeapNode($ReadAllocation(n)))) :-
+  readPropertyNode(n, _, br, pr, ps),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  propertyReadNeedsValue(n),
+  br >= 0,
+  pr < 0,
+  ps = [psv],
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(bv)).

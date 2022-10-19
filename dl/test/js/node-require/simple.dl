@@ -1,0 +1,13 @@
+#include "node-require/node-require.dl"
+
+#include "test/core/core.dl"
+#include "test/node-require/node-require.dl"
+
+nameNode("cn", "CallNode", "simple.js", 1, 1).
+
+expectNodeRequire(cn, "abc") :-
+  nodeByName(cn, "cn").
+
+.output error
+.output nodeRequireError
+.output warning

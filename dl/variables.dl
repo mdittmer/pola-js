@@ -1,0 +1,5 @@
+#include "core.dl"
+
+.output functionParameter
+.output functionLocalVariable
+.output catchLocalVariable

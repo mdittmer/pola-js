@@ -1,0 +1,83 @@
+// Implicit dependencies:
+//   "core/core.dl"
+//   "flow-sensitive-points-to/flow-sensitive-points-to.dl"
+
+//
+// HostAllocation identifiers for NodeJS:
+//
+//   HostID: 1
+//
+//   HostValue:
+//
+//     Initial value of global `module`: 1
+//
+//     Initial value of global `module.exports` (and global `exports`): 2
+//
+
+// Helper for designating all module's main function entry nodes.
+.decl mainFunctionEntryNode(mainFunctionEntryNode: NodeID)
+mainFunctionEntryNode(mfen) :-
+  mainFunction(mf),
+  functionEntryBasicBlock(mf, mb),
+  basicBlockFirstNode(mb, mfen).
+
+// Initial globals in all modules, enumerated by HostValue:
+// 1. `module`
+// 2. `module.exports` and `exports`
+inMayPointToWithCause(mfen, mfen, $StackNode($Variable($DefaultGlobalScope(), "module")), nil, $AbstractNode($HeapNode($HostAllocation(1, 1)))) :-
+  mainFunctionEntryNode(mfen).
+inMayPointToWithCause(mfen, mfen, $HeapNode($HostAllocation(1, 1)), [$PropertyName($StringConstant("exports"))], $AbstractNode($HeapNode($HostAllocation(1, 2)))) :-
+  mainFunctionEntryNode(mfen).
+inMayPointToWithCause(mfen, mfen, $StackNode($Variable($DefaultGlobalScope(), "exports")), nil, $AbstractNode($HeapNode($HostAllocation(1, 2)))) :-
+  mainFunctionEntryNode(mfen).
+
+// `requireCallNode` is a node-require invocation appearing somewhere in the
+// modules at `modulePath`. The module string passed in the invocation is
+// `targetModuleString`.
+.decl nodeRequireSource(requireCallNode: NodeID, modulePath: symbol, targetModuleString: symbol)
+nodeRequireSource(cn, mp, tms) :-
+  nodeRequire(cn, tms),
+  nodeSourceLocation(cn, [mp], _, _, _, _).
+
+// Helper for denoting main function exit nodes for particular module paths.
+.decl mainFunctionExitNodeByModule(modulePath: symbol, exitNode: NodeID)
+mainFunctionExitNodeByModule(mp, en) :-
+  functionSourceLocation(mf, [mp], _, _, _, _),
+  mainFunction(mf),
+  functionExitBasicBlock(mf, eb),
+  basicBlockLastNode(eb, en).
+
+// The module exports object may point to `moduleExports` on out-edges of
+// `node`.
+.decl outModuleExports(node: NodeID, moduleExports: PointToNode)
+outModuleExports(n, exp) :-
+  outMayPointTo(n, $HeapNode($HostAllocation(1, 1)), [$PropertyName($StringConstant("exports"))], exp).
+outModuleExports(n, exp) :-
+  outMayPointTo(n, $HeapNode($HostAllocation(1, 1)), [$Wildcard(_)], exp).
+
+// `outModuleExports` for module exit nodes only.
+.decl exitOutModuleExports(modulePath: symbol, exitNode: NodeID, moduleExports: PointToNode)
+exitOutModuleExports(modulePath, exitNode, moduleExports) :-
+  mainFunctionExitNodeByModule(modulePath, exitNode),
+  outModuleExports(exitNode, moduleExports).
+
+// The object graph with sources drawn from `outModuleExports`. Graph elements
+// are for each flow graph node are `(graphNode, nil, nil)` and
+// `(graphSourceNode, graphEdge, graphSinkNode)`.
+.decl outModuleExportsGraph(node: NodeID, src: PointToNode, edge: PointToEdge, sink: NextPointToNode)
+// Base case.
+outModuleExportsGraph(node, src, nil, nil) :-
+  outModuleExports(node, src).
+// Recursvie case: Edge from `outModuleExportsGraph` + `outMayPointTo` edge.
+outModuleExportsGraph(node, $AbstractNode(a), [edge], [sink]) :-
+  outModuleExportsGraph(node, $AbstractNode(a), _, _),
+  outMayPointTo(n, a, [edge], sink).
+// Recursive case: Capture sinks as sources for further graph extension.
+outModuleExportsGraph(node, src, nil, nil) :-
+  outModuleExportsGraph(node, _, _, [src]).
+
+// `outModuleExportsGraph` for module exit nodes only.
+.decl exitOutModuleExportsGraph(modulePath: symbol, exitNode: NodeID, src: PointToNode, edge: PointToEdge, sink: NextPointToNode)
+exitOutModuleExportsGraph(modulePath, exitNode, src, edge, sink) :-
+  mainFunctionExitNodeByModule(modulePath, exitNode),
+  outModuleExportsGraph(exitNode, src, edge, sink).

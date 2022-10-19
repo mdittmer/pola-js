@@ -1,0 +1,41 @@
+#include "flow-sensitive-points-to/flow-sensitive-points-to.dl"
+#include "test/core/core.dl"
+#include "test/flow-based-scoping/flow-based-scoping.dl"
+
+nameFunction("outer", "shadow-param.js", 1, 2).
+nameFunction("inner", "shadow-param.js", 2, 4).
+nameNode("innerRead", "ReadVariableNode", "shadow-param.js", 3, 5).
+nameNode("innerInvoke", "ReadVariableNode", "shadow-param.js", 4, 5).
+nameNode("innerWrite", "WriteVariableNode", "shadow-param.js", 5, 5).
+
+nameNode("outerPropAccess", "ReadVariableNode", "shadow-param.js", 7, 3).
+nameNode("outerPropWrite", "ReadVariableNode", "shadow-param.js", 8, 3).
+nameNode("outerMethodInvoke", "ReadVariableNode", "shadow-param.js", 9, 3).
+nameNode("outerDelete", "DeletePropertyNode", "shadow-param.js", 10, 3).
+
+expectMayVariableScopeBinding("a", $FunctionScope(f), n) :-
+  functionByName(f, "inner"),
+  nodeByName(n, "innerRead").
+expectMayVariableScopeBinding("a", $FunctionScope(f), n) :-
+  functionByName(f, "inner"),
+  nodeByName(n, "innerInvoke").
+expectMayVariableScopeBinding("a", $FunctionScope(f), n) :-
+  functionByName(f, "inner"),
+  nodeByName(n, "innerWrite").
+
+expectMayVariableScopeBinding("a", $FunctionScope(f), n) :-
+  functionByName(f, "outer"),
+  nodeByName(n, "outerPropAccess").
+expectMayVariableScopeBinding("a", $FunctionScope(f), n) :-
+  functionByName(f, "outer"),
+  nodeByName(n, "outerPropWrite").
+expectMayVariableScopeBinding("a", $FunctionScope(f), n) :-
+  functionByName(f, "outer"),
+  nodeByName(n, "outerMethodInvoke").
+expectMayVariableScopeBinding("a", $FunctionScope(f), n) :-
+  functionByName(f, "outer"),
+  nodeByName(n, "outerDelete").
+
+.output error
+.output coreError
+.output scopingError

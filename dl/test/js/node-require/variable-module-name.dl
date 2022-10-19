@@ -1,0 +1,32 @@
+#include "node-require/node-require.dl"
+
+#include "test/core/core.dl"
+#include "test/node-require/node-require.dl"
+
+nameNode("cn", "CallNode", "variable-module-name.js", 2, 1).
+
+expectNodeRequire(cn, "abc") :-
+  nodeByName(cn, "cn").
+
+// Two warnings: Variable initialized as `undefined`, and register that loads
+// variable takes abstract `ReadAllocation` value in addition to `undefined` and
+// string constant.
+.decl warningError(errorDescription: symbol)
+warningError(e) :-
+  !nonConstantRequireWarning(_, _, _, _, _, _),
+  e = "Expected non-constant-require-warning".
+warningError(e) :-
+  cw = count : warning(_),
+  cncrw = count : nonConstantRequireWarning(_, _, _, _, _, _),
+  cw != 2,
+  cncrw != 2,
+  e = cat(cat(cat(cat(
+    "Expected exactly two non-constant-require-warnings, but got ",
+    to_string(cw)),
+    " warnings and "),
+    to_string(cncrw)),
+    " non-constant-require-warnings").
+
+.output error
+.output nodeRequireError
+.output warningError

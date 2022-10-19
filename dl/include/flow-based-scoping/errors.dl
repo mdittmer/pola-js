@@ -1,0 +1,22 @@
+// Implicit dependencies:
+//   "core/core.dl"
+//   "flow-based-scoping/flow-based-scoping.dl"
+
+// Scoping becomes unsound if a BeginWithNode (and, presumably, corresponding
+// EndWithNode) has nil source path or no source location.
+
+.decl beginWithNodeWithoutSourcePath(beginWithNode: NodeID)
+beginWithNodeWithoutSourcePath(bwn) :-
+  beginWithNode(bwn, _),
+  nodeSourceLocation(bwn, nil, _, _, _, _).
+error(e) :-
+  beginWithNodeWithoutSourcePath(bwn),
+  e = cat("BeginWithNode with no source path: ", to_string(bwn)).
+
+.decl beginWithNodeWithoutSourceLocation(beginWithNode: NodeID)
+beginWithNodeWithoutSourceLocation(bwn) :-
+  beginWithNode(bwn, _),
+  0 = count : { nodeSourceLocation(bwn, _, _, _, _, _) }.
+error(e) :-
+  beginWithNodeWithoutSourceLocation(bwn),
+  e = cat("BeginWithNode with no source location: ", to_string(bwn)).

@@ -1,0 +1,16 @@
+// Implicit dependencies: "flow-based-scoping/flow-based-scoping.dl"
+
+.decl expectMayVariableScopeBinding(variable: VariableLabel, scope: Scope, binding: NodeID)
+
+.type ScopingError =
+  MissingMayVariableScopeBinding { variable: VariableLabel, scope: Scope, binding: NodeID } |
+  UnexpectedMayVariableScopeBinding { variable: VariableLabel, scope: Scope, binding: NodeID }
+
+
+.decl scopingError(scopingError: ScopingError)
+scopingError($MissingMayVariableScopeBinding(v, s, b)) :-
+  expectMayVariableScopeBinding(v, s, b),
+  !mayVariableScopeBinding(v, s, b).
+scopingError($UnexpectedMayVariableScopeBinding(v, s, b)) :-
+  !expectMayVariableScopeBinding(v, s, b),
+  mayVariableScopeBinding(v, s, b).

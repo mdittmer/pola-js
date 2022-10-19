@@ -1,0 +1,33 @@
+#include "core/core.dl"
+#include "test/core/core.dl"
+#include "test/core/scoping.dl"
+
+.decl expectedOuterInnerScope(outer: Scope, inner: Scope)
+
+nameFunction("function:0:0", "multi-fn-with-scopes.js", 0, 0).
+nameNode("with:2:1", "BeginWithNode", "multi-fn-with-scopes.js", 2, 1).
+nameFunction("function:3:3", "multi-fn-with-scopes.js", 3, 3).
+nameNode("with:3:19", "BeginWithNode", "multi-fn-with-scopes.js", 3, 19).
+nameFunction("function:4:5", "multi-fn-with-scopes.js", 4, 5).
+nameNode("with:4:21", "BeginWithNode", "multi-fn-with-scopes.js", 4, 21).
+
+expectOuterInnerScope($DefaultGlobalScope(), $FunctionScope(f)) :-
+  functionByName(f, "function:0:0").
+expectOuterInnerScope($FunctionScope(f), $WithScope(w)) :-
+  functionByName(f, "function:0:0"),
+  nodeByName(w, "with:2:1").
+expectOuterInnerScope($WithScope(w), $FunctionScope(f)) :-
+  nodeByName(w, "with:2:1"),
+  functionByName(f, "function:3:3").
+expectOuterInnerScope($FunctionScope(f), $WithScope(w)) :-
+  functionByName(f, "function:3:3"),
+  nodeByName(w, "with:3:19").
+expectOuterInnerScope($WithScope(w), $FunctionScope(f)) :-
+  nodeByName(w, "with:3:19"),
+  functionByName(f, "function:4:5").
+expectOuterInnerScope($FunctionScope(f), $WithScope(w)) :-
+  functionByName(f, "function:4:5"),
+  nodeByName(w, "with:4:21").
+
+.output coreError
+.output scopingError

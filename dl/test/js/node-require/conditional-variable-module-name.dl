@@ -1,0 +1,22 @@
+#include "node-require/node-require.dl"
+
+#include "test/core/core.dl"
+#include "test/node-require/node-require.dl"
+
+nameNode("cn", "CallNode", "conditional-variable-module-name.js", 7, 1).
+
+expectNodeRequire(cn, "abc") :-
+  nodeByName(cn, "cn").
+
+.decl warningError(errorDescription: symbol)
+warningError(e) :-
+  !nonConstantRequireWarning(_, _, _, _, _, _),
+  e = "Expected non-constant-require-warning".
+warningError(e) :-
+  c = count : warning(_),
+  c != 1,
+  e = cat("Expected exactly one warning (non-constant-require-warning), but got ", to_string(c)).
+
+.output error
+.output nodeRequireError
+.output warningError

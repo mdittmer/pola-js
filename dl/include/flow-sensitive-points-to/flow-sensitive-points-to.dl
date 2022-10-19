@@ -1,0 +1,18 @@
+#include "flow-based-scoping/flow-based-scoping.dl"
+
+#include "flow-sensitive-points-to/types.dl"
+
+// Associate constant type names that appear in input facts with the appropriate
+// abstract points-to analysis node.
+.decl constantTypePointToNode(constantType: ConstantType, pointToNode: PointToNode)
+constantTypePointToNode("NUMBER", $AbstractNode($NumberNode())).
+constantTypePointToNode("STRING", $AbstractNode($StringNode())).
+constantTypePointToNode("BOOLEAN", $AbstractNode($BooleanNode())).
+constantTypePointToNode("UNDEFINED", $ConstantNode($UndefinedNode())).
+constantTypePointToNode("NULL", $ConstantNode($NullNode())).
+
+#include "flow-sensitive-points-to/points-to.dl"
+
+#include "flow-sensitive-points-to/transfer-functions.dl"
+
+#include "flow-sensitive-points-to/authority.dl"

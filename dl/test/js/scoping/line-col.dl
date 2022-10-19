@@ -1,0 +1,12 @@
+#include "flow-sensitive-points-to/flow-sensitive-points-to.dl"
+
+.decl errorError(errorDescription: symbol)
+errorError(e) :-
+  !colLineArithmeticError(_, _, _),
+  e = "Expected col-line-arithmetic-error".
+errorError(e) :-
+  c = count : error(_),
+  c != 1,
+  e = cat("Expected exactly one error (col-line-arithmetic-error), but got ", to_string(c)).
+
+.output errorError

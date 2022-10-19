@@ -1,0 +1,13 @@
+#include "flow-sensitive-points-to/flow-sensitive-points-to.dl"
+#include "test/core/core.dl"
+#include "test/flow-sensitive-points-to/parameter-access.dl"
+
+nameFunction("f", "property-read.js", 1, 2).
+nameNode("r", "ReadPropertyNode", "property-read.js", 2, 3).
+expectParameterAccess(f, $HeapNode($ParameterAllocation(f, "a")), $Read(), [$PropertyName($StringConstant("x"))], [$HeapNode($ReadAllocation(r))]) :-
+  functionByName(f, "f"),
+  nodeByName(r, "r").
+
+.output error
+.output coreError
+.output parameterAccessError

@@ -1,0 +1,11 @@
+#include "flow-sensitive-points-to/flow-sensitive-points-to.dl"
+#include "test/core/core.dl"
+#include "test/flow-sensitive-points-to/parameter-access.dl"
+
+nameFunction("f", "property-write.js", 1, 2).
+expectParameterAccess(f, $HeapNode($ParameterAllocation(f, "a")), $Write(), [$PropertyName($StringConstant("x"))], nil) :-
+  functionByName(f, "f").
+
+.output error
+.output coreError
+.output parameterAccessError

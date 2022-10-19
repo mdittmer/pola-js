@@ -1,0 +1,164 @@
+// Implicit dependencies: "core/core.dl"
+
+//
+// Line multiplier hack:
+// Define source locations by `l * lm + c` where `lm` is a unique multiplier
+// that satisfies both:
+//
+// 1. max(l) * lm <= INT32_MAX,
+// 2. max(c) < lm.
+//
+// This approach allows us to use min/max aggregate functions over source
+// locations without branching over "same/different line" cases.
+//
+
+.decl colNumber(src: OptionalPath, col: number)
+colNumber(u, c) :-
+  functionEstimatedSourceLocation(_, u, _, c, _, _).
+colNumber(u, ec) :-
+  functionEstimatedSourceLocation(_, u, _, _, _, ec).
+colNumber(u, c) :-
+  nodeSourceLocation(_, u, _, c, _, _).
+colNumber(u, ec) :-
+  nodeSourceLocation(_, u, _, _, _, ec).
+
+.decl lineNumber(src: OptionalPath, line: number)
+lineNumber(u, l) :-
+  functionEstimatedSourceLocation(_, u, l, _, _, _).
+lineNumber(u, el) :-
+  functionEstimatedSourceLocation(_, u, _, _, el, _).
+lineNumber(u, l) :-
+  nodeSourceLocation(_, u, l, _, _, _).
+lineNumber(u, el) :-
+  nodeSourceLocation(_, u, _, _, el, _).
+
+.decl lineMul(src: OptionalPath, multiplier: number)
+lineMul(u, m) :-
+  ml = max l : lineNumber(u, l),
+  m = 0x7FFFFFFF / ml.
+
+//
+// Outermost function adjustment
+//
+// TAJS reports outermost functions has having location ([path], 0, 0, 0, 0).
+// Their end location should actually be "after-last-line";
+// `functionSourceLocation` approximates this by reporting end line at "source's
+// max known line" + 1.
+//
+
+.decl functionSourceLocation(function: FunctionID, optionalPath: OptionalPath, line: LineNumber, column: ColumnNumber, endLineNumber: LineNumber, endColumnNumber: ColumnNumber)
+functionSourceLocation(f, u, l, c, el, ec) :-
+  functionEstimatedSourceLocation(f, u, l, c, el, ec),
+  l != 0.
+functionSourceLocation(f, u, l, c, el, 0) :-
+  functionEstimatedSourceLocation(f, u, l, c, _, _),
+  l = 0,
+  ml = max l : lineNumber(u, l),
+  el = ml + 1.
+
+//
+// Scope containment
+//
+
+// Scope locations, regardless of scope kind.
+.type ScopeLocation = [
+  optionalPath: OptionalPath,
+  lineNumber: LineNumber,
+  columnNumber: ColumnNumber,
+  endLineNumber: LineNumber,
+  endColumnNumber: ColumnNumber
+]
+.decl scopeLocation(location: ScopeLocation)
+scopeLocation([u, l, c, el, ec]) :-
+  functionSourceLocation(_, u, l, c, el, ec),
+  l != 0.
+scopeLocation([u, l, c, el, 0]) :-
+  functionSourceLocation(_, u, l, c, _, _),
+  l = 0,
+  ml = max l : lineNumber(u, l),
+  el = ml + 1.
+scopeLocation([u, l, c, el, ec]) :-
+  beginWithNode(n, _),
+  nodeSourceLocation(n, u, l, c, el, ec).
+
+// Pair source location of all all outer/inner scopes (regardless of
+// intermediate scopes between them)
+// and capture the source location distance between the start of the scopes.
+.decl outerAnyInnerScopeLocation(outer: ScopeLocation, inner: ScopeLocation, distance: number)
+outerAnyInnerScopeLocation([ou, ol, oc, oel, oec], [iu, il, ic, iel, iec], d) :-
+  scopeLocation([ou, ol, oc, oel, oec]),
+  scopeLocation([iu, il, ic, iel, iec]),
+  ou = iu,
+  lineMul(ou, lm),
+  ob = ol * lm + oc,
+  ib = il * lm + ic,
+  oe = oel * lm + oec,
+  ie = iel * lm + iec,
+  d = ib - ob,
+  ed = ie - oe,
+  d > 0,
+  ed < 0.
+
+// Compute source file distance betwen *direct* outer/inner scopes (with no
+// intermediate scopes between them).
+.decl outerInnerScopeLocationDistance(outer: ScopeLocation, inner: ScopeLocation, distance: number)
+outerInnerScopeLocationDistance(l1, l2, d) :-
+  outerAnyInnerScopeLocation(_, l2, _),
+  d = min x : outerAnyInnerScopeLocation(l1, l2, x).
+
+// Pair source information about *direct* outer/inner scopes (with no
+// intermediate scopes between them), retaining the source location distance
+// between the start of the scopes.
+.decl outerInnerScopeLocation(outer: ScopeLocation, inner: ScopeLocation)
+outerInnerScopeLocation(o, i) :-
+  outerInnerScopeLocationDistance(o, i, _).
+
+// Pair *direct* outer/inner scopes (with no intermediate scopes between them).
+.decl outerInnerScope(outer: Scope, inner: Scope)
+outerInnerScope($DefaultGlobalScope(), $FunctionScope(f)) :-
+  functionSourceLocation(f, _, 0, 0, _, _).
+outerInnerScope($FunctionScope(o), $FunctionScope(i)) :-
+  outerInnerScopeLocation([ou, ol, oc, oel, oec], [iu, il, ic, iel, iec]),
+  functionSourceLocation(o, ou, ol, oc, oel, oec),
+  functionSourceLocation(i, iu, il, ic, iel, iec).
+outerInnerScope($FunctionScope(o), $WithScope(i)) :-
+  outerInnerScopeLocation([ou, ol, oc, oel, oec], [iu, il, ic, iel, iec]),
+  functionSourceLocation(o, ou, ol, oc, oel, oec),
+  beginWithNode(i, _),
+  nodeSourceLocation(i, iu, il, ic, iel, iec).
+outerInnerScope($WithScope(o), $FunctionScope(i)) :-
+  outerInnerScopeLocation([ou, ol, oc, oel, oec], [iu, il, ic, iel, iec]),
+  beginWithNode(o, _),
+  nodeSourceLocation(o, ou, ol, oc, oel, oec),
+  functionSourceLocation(i, iu, il, ic, iel, iec).
+outerInnerScope($WithScope(o), $WithScope(i)) :-
+  outerInnerScopeLocation([ou, ol, oc, oel, oec], [iu, il, ic, iel, iec]),
+  beginWithNode(o, _),
+  nodeSourceLocation(o, ou, ol, oc, oel, oec),
+  beginWithNode(i, _),
+  nodeSourceLocation(i, iu, il, ic, iel, iec).
+
+// Pair outer/inner scopes (regardless of intermediate scopes between them).
+.decl outerAnyInnerScope(outer: Scope, inner: Scope)
+outerAnyInnerScope($DefaultGlobalScope(), $FunctionScope(f)) :-
+  functionSourceLocation(f, _, 0, 0, _, _).
+outerAnyInnerScope($FunctionScope(o), $FunctionScope(i)) :-
+  outerAnyInnerScopeLocation([ou, ol, oc, oel, oec], [iu, il, ic, iel, iec], _),
+  functionSourceLocation(o, ou, ol, oc, oel, oec),
+  functionSourceLocation(i, iu, il, ic, iel, iec).
+outerAnyInnerScope($FunctionScope(o), $WithScope(i)) :-
+  outerAnyInnerScopeLocation([ou, ol, oc, oel, oec], [iu, il, ic, iel, iec], _),
+  functionSourceLocation(o, ou, ol, oc, oel, oec),
+  beginWithNode(i, _),
+  nodeSourceLocation(i, iu, il, ic, iel, iec).
+outerAnyInnerScope($WithScope(o), $FunctionScope(i)) :-
+  outerAnyInnerScopeLocation([ou, ol, oc, oel, oec], [iu, il, ic, iel, iec], _),
+  beginWithNode(o, _),
+  nodeSourceLocation(o, ou, ol, oc, oel, oec),
+  functionSourceLocation(i, iu, il, ic, iel, iec).
+outerAnyInnerScope($WithScope(o), $WithScope(i)) :-
+  outerAnyInnerScopeLocation([ou, ol, oc, oel, oec], [iu, il, ic, iel, iec], _),
+  beginWithNode(o, _),
+  nodeSourceLocation(o, ou, ol, oc, oel, oec),
+  beginWithNode(i, _),
+  nodeSourceLocation(i, iu, il, ic, iel, iec).

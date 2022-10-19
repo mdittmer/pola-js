@@ -1,0 +1,281 @@
+// Implicit dependencies:
+//   "core/core.dl"
+//   "flow-based-scoping/flow-based-scoping.dl"
+//   "flow-sensitive-points-to/types.dl"
+//   "flow-sensitive-points-to/points-to.dl"
+
+//
+// Flowgraph node type points-to predicates.
+//
+
+// binaryOperatorNode: Could result in anything.
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $AbstractNode($UnknownNode())) :-
+  binaryOperatorNode(n, r, _, _, _),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+
+// callNode: Could write anything to return register.
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $AbstractNode($ReturnValueNode(n))) :-
+  callNode(n, r, _, _, _, _, _, _, _),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+
+// catchNode: Exception variable may point to anything exception register points to.
+outMayPointToWithCause(n, n, $StackNode($Variable($WithScope(bwn), var)), nil, val) :-
+  catchNode(n, [var], r, _),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  // Assumption: `catch (...) { ... }` modeled by:
+  // BasicBlock [ CatchNode(varname), BeginWithNode(...) ].
+  fromToNodeEdge(n, bwn),
+  beginWithNode(bwn, _),
+  inMayPointTo(n, $StackNode($Register(f, r)), nil, val).
+
+// constantNode: Register may point to the constant node associated with the constant type.
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $ConstantNode($NumberConstant(num))) :-
+  constantNode(n, r, t, num, _, _),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  t = "NUMBER".
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $ConstantNode($StringConstant(str))) :-
+  constantNode(n, r, t, _, [str], _),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  t = "STRING".
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $ConstantNode($BooleanConstant(bool))) :-
+  constantNode(n, r, t, _, _, bool),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  t = "BOOLEAN".
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $ConstantNode($UndefinedNode())) :-
+  constantNode(n, r, t, _, _, _),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  t = "UNDEFINED".
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $ConstantNode($NullNode())) :-
+  constantNode(n, r, t, _, _, _),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  t = "NULL".
+
+// deletePropertyNode: Property may now lead to undefined.
+// Result: Boolean true or false (https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/delete#return_value).
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $AbstractNode($BooleanNode())) :-
+  deletePropertyNode(n, r, _, _, _, _),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+// Object write: delete *base_reg[*property_reg].
+.decl deletePropertyNodePropReg(node: NodeID, base: Abstract, prop: PointToNode)
+deletePropertyNodePropReg(n, bv, pv) :-
+  deletePropertyNode(n, _, br, pr, s, v),
+  br >= 0, // Base register.
+  pr >= 0, // Property register.
+  s = nil, // Property string.
+  v = nil, // Variable string.
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(bv)),
+  inMayPointTo(n, $StackNode($Register(f, pr)), nil, pv).
+// *prop_reg happens to be constant.
+outMayPointToWithCause(n, n, bv, [$PropertyName(pn)], $ConstantNode($UndefinedNode())) :-
+  deletePropertyNodePropReg(n, bv, pv),
+  pv = $ConstantNode(pn).
+// *prop_reg is not a constant.
+outMayPointToWithCause(n, n, bv, [$Wildcard(a)], $ConstantNode($UndefinedNode())) :-
+  deletePropertyNodePropReg(n, bv, pv),
+  pv = $AbstractNode(a).
+// Object write: delete (*base_reg).prop_str.
+outMayPointToWithCause(n, n, bv, [$PropertyName($StringConstant(pl))], $ConstantNode($UndefinedNode())) :-
+  deletePropertyNode(n, _, br, pr, s, v),
+  br >= 0, // Base register.
+  pr < 0, // Property register.
+  s = [pl], // Property string.
+  v = nil, // Variable string.
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(bv)).
+// Object write: delete var_str.
+outMayPointToWithCause(n, n, $StackNode($Variable(s, vs)), nil, $ConstantNode($UndefinedNode())) :-
+  deletePropertyNode(n, _, br, pr, psp, vsp),
+  br < 0, // Base register.
+  pr < 0, // Property register.
+  psp = nil, // Property string.
+  vsp = [vs], // Variable string.
+  mayVariableScopeBinding(vs, s, n).
+
+// Skip: beginWithNode.
+
+// exceptionalReturnNode: Exception register may contain anything.
+// Assumption: exception register is register `0`.
+outMayPointToWithCause(n, n, $StackNode($Register(f, 0)), nil, $AbstractNode($UnknownNode())) :-
+  exceptionalReturnNode(n),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+
+// declareFunctionNode: Result register contains the function.
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $AbstractNode($FunctionNode(df))) :-
+  declareFunctionNode(n, r, df, _, _),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+
+// Skip: beginForInNode.
+
+// Skip: ifNode.
+
+// Skip: endWithNode.
+
+// newObjectNode: Result register contains allocation.
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $AbstractNode($HeapNode($OrdinaryAllocation(n)))) :-
+  newObjectNode(n, r),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+
+// nextPropertyNode: Property register contains string.
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $AbstractNode($StringNode())) :-
+  nextPropertyNode(n, _, r),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+
+// hasNextPropertyNode: Result register contains boolean.
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $AbstractNode($BooleanNode())) :-
+  hasNextPropertyNode(n, r, _),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+
+// Skip: nopNode.
+
+// readPropertyNode: Result register points to named property.
+// Property register points to property name.
+.decl readPropertyNodePropReg(node: NodeID, function: FunctionID, resultRegister: RegisterID, base: Abstract, prop: PointToNode)
+readPropertyNodePropReg(n, f, r, bv, pv) :-
+  readPropertyNode(n, r, br, pr, ps),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  br >= 0,
+  pr >= 0,
+  ps = nil,
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(bv)),
+  inMayPointTo(n, $StackNode($Register(f, pr)), nil, pv).
+// No property string; property register happens to contain constant.
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, pv) :-
+  readPropertyNodePropReg(n, f, r, bv, $ConstantNode(pn)),
+  r >= 0,
+  inMayPointTo(n, bv, [$PropertyName(pn)], pv).
+// No property string; property is not constant.
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, pv) :-
+  readPropertyNodePropReg(n, f, r, bv, $AbstractNode(_)),
+  r >= 0,
+  inMayPointTo(n, bv, [_], pv).
+// Property string; no property register.
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, pv) :-
+  readPropertyNode(n, r, br, pr, ps),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  r >= 0,
+  br >= 0,
+  pr < 0,
+  ps = [psv],
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(bv)),
+  inMayPointTo(n, bv, [$PropertyName($StringConstant(psv))], pv).
+
+// readVariableNode: Result register points to what variable points to.
+// TODO: What has to happen with `baseRegister` in readVariableNode?
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, vv) :-
+  readVariableNode(n, r, v, _, _),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  r >= 0,
+  mayVariableScopeBinding(v, s, n),
+  inMayPointTo(n, $StackNode($Variable(s, v)), nil, vv).
+
+// Skip: returnNode.
+
+// throwNode: Exception register points to what designated register points to.
+// Assumption: exception register is register `0`.
+outMayPointToWithCause(n, n, $StackNode($Register(f, 0)), nil, v) :-
+  throwNode(n, r),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  inMayPointTo(n, $StackNode($Register(f, r)), nil, v).
+
+// binaryOperatorNode: Could result in anything.
+outMayPointToWithCause(n, n, $StackNode($Register(f, r)), nil, $AbstractNode($UnknownNode())) :-
+  unaryOperatorNode(n, r, _, _),
+  r >= 0,
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+
+// declareVariableNode: Assign variable to undefined in function scope.
+// Assumption: Variable declarations are placed at the beginning of the
+// functions in which they appear. If this were not the case, some variable
+// read/writes could bind to the wrong scope.
+outMayPointToWithCause(n, n, $StackNode($Variable($FunctionScope(f), v)), nil, $ConstantNode($UndefinedNode())) :-
+  declareVariableNode(n, v),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+
+// writePropertyNode
+// Property register happens to point to a constant.
+.decl writePropertyNodePropReg(node: NodeID, function: FunctionID, valueRegister: RegisterID, base: Abstract, prop: PointToNode)
+writePropertyNodePropReg(n, f, vr, bv, pv) :-
+  writePropertyNode(n, br, pr, ps, vr, _, _),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  br >= 0,
+  pr >= 0,
+  ps = nil,
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(bv)),
+  inMayPointTo(n, $StackNode($Register(f, pr)), nil, pv).
+outMayPointToWithCause(n, n, bv, [$PropertyName(pn)], v) :-
+  writePropertyNodePropReg(n, f, vr, bv, pv),
+  vr >= 0,
+  pv = $ConstantNode(pn),
+  inMayPointTo(n, $StackNode($Register(f, vr)), nil, v).
+// Property register does not point to a constant.
+outMayPointToWithCause(n, n, bv, [$Wildcard(a)], v) :-
+  writePropertyNodePropReg(n, f, vr, bv, pv),
+  vr >= 0,
+  pv = $AbstractNode(a),
+  inMayPointTo(n, $StackNode($Register(f, vr)), nil, v).
+// Constant property string.
+outMayPointToWithCause(n, n, bv, [$PropertyName($StringConstant(pn))], v) :-
+  writePropertyNode(n, br, pr, ps, vr, _, _),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  br >= 0,
+  pr < 0,
+  ps = [pn],
+  vr >= 0,
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(bv)),
+  inMayPointTo(n, $StackNode($Register(f, vr)), nil, v).
+
+// writeVariableNode: Variable in scope may point to everything value register
+// points to.
+outMayPointToWithCause(n, n, $StackNode($Variable(s, var)), nil, val) :-
+  writeVariableNode(n, var, r),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  mayVariableScopeBinding(var, s, n),
+  inMayPointTo(n, $StackNode($Register(f, r)), nil, val).
+
+// Skip: eventDispatcherNode
+
+// Skip: eventDispatcherNode
+
+// Skip: beginLoopNode
+
+// Skip: endLoopNode

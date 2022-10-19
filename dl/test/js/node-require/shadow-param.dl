@@ -1,0 +1,10 @@
+#include "node-require/node-require.dl"
+
+#include "test/core/core.dl"
+#include "test/node-require/node-require.dl"
+
+// Expect no nodeRequire predicates by deducing no expectNodeRequire.
+
+.output error
+.output nodeRequireError
+.output warning

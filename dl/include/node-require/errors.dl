@@ -1,0 +1,20 @@
+// Implicit dependencies: "core/core.dl"
+
+.decl nonConstantRequireWarning(sourceModulePath: symbol, pointToNode: PointToNode, line: LineNumber, column: ColumnNumber, endLineNumber: LineNumber, endColumnNumber: ColumnNumber)
+nonConstantRequireWarning(smp, nsc, l, c, el, ec) :-
+  nodeRequireAny(cn, _, _),
+  nodeSourceLocation(cn, [smp], l, c, el, ec),
+  nonStringConstantNodeRequire(cn, nsc).
+warning(w) :-
+  nonConstantRequireWarning(smp, _, l, c, el, ec),
+  w = cat(cat(cat(cat(cat(cat(cat(cat(cat(cat("NodeJS require() with non-string-constant argument at ",
+  smp),
+  ":"),
+  to_string(l)),
+  ":"),
+  to_string(c)),
+  "-"),
+  to_string(el)),
+  ":"),
+  to_string(ec)),
+  "  Output nonConstantRequireWarning predicate for details").

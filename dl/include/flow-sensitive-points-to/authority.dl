@@ -1,0 +1,199 @@
+// Implicit dependencies:
+//   "core/core.dl"
+//   "flow-sensitive-points-to/types.dl"
+//   "flow-sensitive-points-to/points-to.dl"
+//   "flow-sensitive-points-to/transfer-functions.dl"
+
+//
+// Track exercising function parameter authorities
+//
+
+// Property deletion.
+// delete *base_reg[*property_reg]; *prop_reg happens to be constant.
+.decl deleteProperty(o: Abstract, p: Property)
+deleteProperty(o, $PropertyName(pn)) :-
+  deletePropertyNodePropReg(_, o, $ConstantNode(pn)).
+// delete *base_reg[*property_reg]; *prop_reg is not a constant.
+deleteProperty(o, $Wildcard(a)) :-
+  deletePropertyNodePropReg(_, o, $AbstractNode(a)).
+// delete (*base_reg).prop_str.
+deleteProperty(o, $PropertyName($StringConstant(pl))) :-
+  deletePropertyNode(n, _, br, pr, s, v),
+  br >= 0, // Base register.
+  pr < 0, // Property register.
+  s = [pl], // Property string.
+  v = nil, // Variable string.
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(o)).
+// N/A: delete var_str.
+
+// Property read.
+// No property string; property register happens to contain constant.
+.decl readProperty(o: Abstract, p: Property, v: NextAuthority)
+readProperty(o, $PropertyName(pn), [a]) :-
+  readPropertyNodePropReg(n, _, _, o, $ConstantNode(pn)),
+  inMayPointTo(n, o, [$PropertyName(pn)], $AbstractNode(a)).
+// No property string; property is not constant.
+readProperty(o, $Wildcard(a), [a]) :-
+  readPropertyNodePropReg(n, _, _, o, $AbstractNode(a)),
+  inMayPointTo(n, o, [$Wildcard(a)], $AbstractNode(a)).
+// Property string; no property register.
+readProperty(o, $PropertyName($StringConstant(pn)), [a]) :-
+  readPropertyNode(n, _, br, pr, [pn]),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  br >= 0,
+  pr < 0,
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(o)),
+  inMayPointTo(n, o, [$PropertyName($StringConstant(pn))], $AbstractNode(a)).
+
+.decl writeProperty(o: Abstract, p: Property)
+// Property register happens to point to a constant.
+writeProperty(o, $PropertyName(pn)) :-
+  writePropertyNodePropReg(_, _, _, o, $ConstantNode(pn)).
+// Property register does not point to a constant.
+writeProperty(o, $Wildcard(a)) :-
+  writePropertyNodePropReg(_, _, _, o, $AbstractNode(a)).
+// Constant property string.
+writeProperty(o, $PropertyName($StringConstant(pn))) :-
+  writePropertyNode(n, br, pr, [pn], _, _, _),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b),
+  br >= 0,
+  pr < 0,
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(o)).
+
+// Invocation has two dimensions that need to be considered:
+// 1. The invocation result as the next authority after invocation;
+// 2. The difference in interpretation between function invocation and method invocation.
+
+// Bind a containing function and node to the relevant data from `callNode`.
+.decl invokeBasis(function: FunctionID, node: NodeID, resultRegister: RegisterID, baseRegister: RegisterID, functionRegister: RegisterID, propertyRegister: RegisterID, propertyString: String)
+invokeBasis(f, n, r, br, fr, pr, ps) :-
+  callNode(n, r, _, _, br, fr, pr, ps, _),
+  basicBlockNode(b, n),
+  functionBasicBlock(f, b).
+// Describe the next authority for function/method invocation (if any).
+.decl invokeWithNextAuthority(function: FunctionID, node: NodeID, nextAuthority: NextAuthority)
+invokeWithNextAuthority(f, n, nil) :-
+  invokeBasis(f, n, r, _, _, _, _),
+  r < 0.
+invokeWithNextAuthority(f, n, [na]) :-
+  invokeBasis(f, n, r, _, _, _, _),
+  r >= 0,
+  outMayPointTo(n, $StackNode($Register(f, r)), nil, $AbstractNode(na)).
+// Describe the "invoke function" interpretation: authority contains callee.
+.decl invokeFunctionBasis(function: FunctionID, node: NodeID, callee: PointToNode)
+invokeFunctionBasis(f, n, c) :-
+  invokeBasis(f, n, _, _, fr, _, _),
+  fr >= 0,
+  inMayPointTo(n, $StackNode($Register(f, fr)), nil, c).
+.decl invokeMethodGuard(function: FunctionID, node: NodeID, baseRegister: RegisterID, propertyRegister: RegisterID, propertyString: String)
+// Distinguish method invocation from function invocation.
+// Assumption: method invocations use `functionRegister=NO_VALUE` (`fr=-1`).
+invokeMethodGuard(f, n, br, pr, ps) :-
+  invokeBasis(f, n, _, br, fr, pr, ps),
+  fr < 0.
+// Describe "invoke method" interpretation: authority contains base object
+// (`this` inside invocation).
+.decl invokeMethodBasis(function: FunctionID, node: NodeID, base: Abstract, property: Property)
+invokeMethodBasis(f, n, b, $PropertyName(pn)) :-
+  invokeMethodGuard(f, n, br, pr, ps),
+  pr >= 0,
+  ps = nil,
+  inMayPointTo(n, $StackNode($Register(f, pr)), nil, $ConstantNode(pn)),
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(b)).
+invokeMethodBasis(f, n, b, $Wildcard(a)) :-
+  invokeMethodGuard(f, n, br, pr, ps),
+  pr >= 0,
+  ps = nil,
+  inMayPointTo(n, $StackNode($Register(f, pr)), nil, $AbstractNode(a)),
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(b)).
+invokeMethodBasis(f, n, b, $PropertyName($StringConstant(pn))) :-
+  invokeMethodGuard(f, n, br, pr, ps),
+  pr < 0,
+  ps = [pn],
+  inMayPointTo(n, $StackNode($Register(f, br)), nil, $AbstractNode(b)).
+
+// Function invocation predicate for use with authority tracking.
+.decl invokeFunction(callee: PointToNode, nextAuthority: NextAuthority)
+invokeFunction(c, na) :-
+  invokeWithNextAuthority(f, n, na),
+  invokeFunctionBasis(f, n, c).
+
+// Method invocation predicate for use with authority tracking.
+.decl invokeMethod(base: Abstract, property: Property, nextAuthority: NextAuthority)
+invokeMethod(b, p, na) :-
+  invokeWithNextAuthority(f, n, na),
+  invokeMethodBasis(f, n, b, p).
+
+// Track authority access rooted from a synthetic "parameter allocation" node.
+.decl parameterAccess(function: FunctionID, src: Abstract, type: AuthorityType, property: AuthorityProperty, nextAuthority: NextAuthority)
+// Base cases for each authority type.
+parameterAccess(f, $HeapNode($ParameterAllocation(f, v)), $InvokeFunction(), nil, na) :-
+  invokeFunction($AbstractNode($HeapNode($ParameterAllocation(f, v))), na).
+parameterAccess(f, $HeapNode($ParameterAllocation(f, v)), $InvokeMethod(), [p], na) :-
+  invokeMethod($HeapNode($ParameterAllocation(f, v)), p, na).
+parameterAccess(f, $HeapNode($ParameterAllocation(f, v)), $Read(), [p], na) :-
+  readProperty($HeapNode($ParameterAllocation(f, v)), p, na).
+parameterAccess(f, $HeapNode($ParameterAllocation(f, v)), $Write(), [p], nil) :-
+  writeProperty($HeapNode($ParameterAllocation(f, v)), p).
+parameterAccess(f, $HeapNode($ParameterAllocation(f, v)), $Delete(), [p], nil) :-
+  deleteProperty($HeapNode($ParameterAllocation(f, v)), p).
+// Inductive cases: Only apply to invocation and read types.
+parameterAccess(f, na, $InvokeFunction(), nil, ina) :-
+  parameterAccess(f, _, _, _, [na]),
+  invokeFunction($AbstractNode(na), ina).
+parameterAccess(f, na, $InvokeMethod(), [p], ina) :-
+  parameterAccess(f, _, _, _, [na]),
+  invokeMethod(na, p, ina).
+parameterAccess(f, na, $Read(), [p], rna) :-
+  parameterAccess(f, _, _, _, [na]),
+  readProperty(na, p, rna).
+
+//
+// Track global variable authorities
+//
+
+// Variable read.
+.decl readVariable(variable: Slot, nextAuthority: NextAuthority)
+readVariable($Variable(s, v), [a]) :-
+  readVariableNode(n, r, v, _, _),
+  r >= 0,
+  mayVariableScopeBinding(v, s, n),
+  inMayPointTo(n, $StackNode($Variable(s, v)), nil, $AbstractNode(a)).
+
+// Variable write.
+.decl writeVariable(variable: Slot)
+writeVariable($Variable(s, v)) :-
+  writeVariableNode(n, v, _),
+  mayVariableScopeBinding(v, s, n).
+
+// Track authority access rooted from a global variable.
+.decl globalAccess(src: Abstract, type: AuthorityType, property: AuthorityProperty, nextAuthority: NextAuthority)
+// Base cases for each authority type.
+globalAccess($StackNode($Variable($DefaultGlobalScope(), v)), $InvokeFunction(), nil, na) :-
+  invokeFunction($AbstractNode($StackNode($Variable($DefaultGlobalScope(), v))), na).
+globalAccess($StackNode($Variable($DefaultGlobalScope(), v)), $InvokeMethod(), [p], na) :-
+  invokeMethod($StackNode($Variable($DefaultGlobalScope(), v)), p, na).
+globalAccess($StackNode($Variable($DefaultGlobalScope(), v)), $Read(), nil, [na]) :-
+  readVariable($Variable($DefaultGlobalScope(), v), [na]).
+globalAccess($StackNode($Variable($DefaultGlobalScope(), v)), $Write(), nil, nil) :-
+  writeVariable($Variable($DefaultGlobalScope(), v)).
+globalAccess($StackNode($Variable($DefaultGlobalScope(), v)), $Read(), [p], na) :-
+  readProperty($StackNode($Variable($DefaultGlobalScope(), v)), p, na).
+globalAccess($StackNode($Variable($DefaultGlobalScope(), v)), $Write(), [p], nil) :-
+  writeProperty($StackNode($Variable($DefaultGlobalScope(), v)), p).
+globalAccess($StackNode($Variable($DefaultGlobalScope(), v)), $Delete(), [p], nil) :-
+  deleteProperty($StackNode($Variable($DefaultGlobalScope(), v)), p).
+// Inductive cases: Only apply to invocation and read types.
+globalAccess(na, $InvokeFunction(), nil, ina) :-
+  globalAccess(_, _, _, [na]),
+  invokeFunction($AbstractNode(na), ina).
+globalAccess(na, $InvokeMethod(), [p], ina) :-
+  globalAccess(_, _, _, [na]),
+  invokeMethod(na, p, ina).
+globalAccess(na, $Read(), [p], rna) :-
+  globalAccess(_, _, _, [na]),
+  readProperty(na, p, rna).

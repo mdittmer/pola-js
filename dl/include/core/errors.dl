@@ -1,0 +1,83 @@
+// Implicit dependencies: "core/core.dl" "core/scoping.dl"
+
+// The line multiplier hack requires a positive integer multiplier such that both:
+//
+// 1. max(l) * lm <= INT32_MAX,
+// 2. max(c) < lm.
+.decl colLineArithmeticError(src: OptionalPath, ml: number, mc: number)
+colLineArithmeticError(u, ml, mc) :-
+  mc = max c : colNumber(u, c),
+  ml = max l : lineNumber(u, l),
+  m = 0x7FFFFFFF / ml,
+  mc >= m.
+  // msg = "Cannot use line-multiplied ordering with max line and colum values".
+error(e) :-
+  colLineArithmeticError([u], ml, mc),
+  e = cat(cat(cat(cat(cat("Cannot use line-multiplied source location ordering for source ",
+    u),
+    " with max line "),
+    to_string(ml)),
+    " and max col "),
+    to_string(mc)).
+
+// Every source should have at most one line multiplier.
+.decl lineMulDefnError(src: OptionalPath, m1: number, m2: number)
+lineMulDefnError(u, m1, m2) :-
+  lineMul(u, m1),
+  lineMul(u, m2),
+  m1 != m2.
+error(e) :-
+  lineMulDefnError([u], m1, m2),
+  e = cat(cat(cat(cat(cat("Malformed line-mulitiplier definition: multiple multipliers defined for source ",
+    u),
+    " one multiplier "),
+    to_string(m1)),
+    " another multiplier "),
+    to_string(m2)).
+
+// Every scope should have at most one direct-outer (parent) scope.
+.decl scopeLocationString(scopeLocation: ScopeLocation, string: symbol)
+scopeLocationString(nil, s) :-
+  outerInnerScopeLocation(nil, _),
+  s = "<nil-source-location>".
+scopeLocationString(nil, s) :-
+  outerInnerScopeLocation(_, nil),
+  s = "<nil-source-location>".
+scopeLocationString([nil, l, c, el, ec], s) :-
+  outerInnerScopeLocation([nil, l, c, el, ec], _),
+  s = cat(cat(cat(cat(cat(cat(cat(cat("<nile-file-optionalPath>",
+    ":"),
+    to_string(l)),
+    ":"),
+    to_string(c)),
+    "-"),
+    to_string(el)),
+    ":"),
+    to_string(ec)).
+scopeLocationString([nil, l, c, el, ec], s) :-
+  outerInnerScopeLocation(_, [nil, l, c, el, ec]),
+  s = cat(cat(cat(cat(cat(cat(cat(cat("<nile-file-path>",
+    ":"),
+    to_string(l)),
+    ":"),
+    to_string(c)),
+    "-"),
+    to_string(el)),
+    ":"),
+    to_string(ec)).
+.decl scopeTreeError(outer1: ScopeLocation, outer2: ScopeLocation, inner: ScopeLocation)
+scopeTreeError(o1, o2, i) :-
+  outerInnerScopeLocation(o1, i),
+  outerInnerScopeLocation(o2, i),
+  o1 != o2.
+error(e) :-
+  scopeTreeError(s1, s2, si),
+  scopeLocationString(s1, sls1),
+  scopeLocationString(s2, sls2),
+  scopeLocationString(si, slsi),
+  e = cat(cat(cat(cat(cat("Two direct-outer (parent) scopes defined for in inner (child) scope; one outer ",
+    sls1),
+    " another outer "),
+    sls2),
+    " inner "),
+    slsi).

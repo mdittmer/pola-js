@@ -1,0 +1,79 @@
+// Implicit dependency: "core/core.dl"
+
+//
+// Points-to analysis graph.
+//
+
+// Concrete constant values. These are used as points-to analysis sink nodes and
+// to denote constant values of property names in points-to analysis edges.
+.type Constant =
+  NumberConstant { number: float } |
+  StringConstant { string: symbol } |
+  BooleanConstant { number: number } | // 0 = false; 1 = true.
+  UndefinedNode {} |
+  NullNode {}
+
+// Abstract storage location nodes.
+.type Abstract =
+  StackNode { slot: Slot } |
+  HeapNode { allocation: Allocation } |
+  // TODO: Should FunctionNode be a HeapNode variant?
+  FunctionNode { function: FunctionID } |
+  ReturnValueNode { callNode: NodeID } |
+  NumberNode {} |
+  StringNode {} |
+  BooleanNode {} |
+  UnknownNode {}
+
+// All nodes are constant (concrate) or abstract.
+.type PointToNode =
+  ConstantNode { constant: Constant } |
+  AbstractNode { abstract: Abstract }
+
+// Edges are either direct references (property=nil) or property-lookup
+// references (property=[constant|wildcard]).
+.type Property =
+  PropertyName { name: Constant } |
+  Wildcard { abstract: Abstract }
+.type PointToEdge = [ property: Property ]
+
+.type Alias =
+  SlotAlias { slot: Slot } |
+  PropertyAlias { slot: Slot, property: Property }
+
+.type NextPointToNode = [ node: PointToNode ]
+
+//
+// Authority tracking.
+//
+
+// Some types of authority can be chained together; e.g.,
+// `x.y.z` composes `((x READ y) READ z)`. Since not all types of authority
+// behave this way, a type is needed for  "nil'able next authority tracking".
+.type NextAuthority = [ abstract: Abstract ]
+
+// Some, but not all, types of authority refer to a property.
+// Non-nil example: `(x READ y)`; property=`y` (or "what x.y may point to").
+// Nil example: `(x INVOKE)`.
+.type AuthorityProperty = [ property: Property ]
+
+// Types of authority that may be composed over function parameters.
+.type AuthorityType =
+  Read {} |           // Read from a property.
+  Write {} |          // Write to a property.
+  Delete{} |          // Delete a property.
+  InvokeFunction {} | // Invoke as a function.
+  InvokeMethod {}     // Invoke a method.
+
+.type Authority =
+  InitialAuthority { scope: Scope, variable: VariableLabel } |
+  PropertyAuthority { parent: Authority, property: Property }
+
+.type Cause = [ cause: NodeID ]
+
+.type Causes = [ cause: NodeID, next: Causes ]
+
+.type CauseTree = [ causes: Causes, next: CauseTree ]
+
+// .type CausedAuthority =
+//   CausedAuthority { causes: Causes, authority: Authority }

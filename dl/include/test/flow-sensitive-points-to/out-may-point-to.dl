@@ -1,0 +1,22 @@
+// Implicit dependency: "flow-sensitive-points-to/flow-sensitive-points-to.dl"
+
+.decl expectOutMayPointTo(node: NodeID, source: Abstract, edge: PointToEdge, sink: PointToNode)
+.decl expectNoOutMayPointTo(node: NodeID, source: Abstract, edge: PointToEdge, sink: PointToNode)
+
+.decl expectAllOutMayPointTo(node: NodeID, source: Abstract)
+
+.type OutMayPointToError =
+  UnexpectedOutMayPointTo { node: NodeID, source: Abstract, edge: PointToEdge, sink: PointToNode } |
+  MissingOutMayPointTo { node: NodeID, source: Abstract, edge: PointToEdge, sink: PointToNode }
+
+.decl outMayPointToError(error: OutMayPointToError)
+outMayPointToError($UnexpectedOutMayPointTo(n, src, e, sink)) :-
+  outMayPointTo(n, src, e, sink),
+  expectNoOutMayPointTo(n, src, e, sink).
+outMayPointToError($MissingOutMayPointTo(n, src, e, sink)) :-
+  expectOutMayPointTo(n, src, e, sink),
+  !outMayPointTo(n, src, e, sink).
+outMayPointToError($UnexpectedOutMayPointTo(n, src, e, sink)) :-
+  expectAllOutMayPointTo(n, src),
+  outMayPointTo(n, src, e, sink),
+  !expectOutMayPointTo(n, src, e, sink).
