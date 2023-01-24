@@ -8,3 +8,6 @@
 [submodule "souffle"]
 	path = souffle
 	url = https://github.com/souffle-lang/souffle.git
+[submodule "aws-bookstore-demo-app"]
+	path = aws-bookstore-demo-app
+	url = https://github.com/mdittmer/aws-bookstore-demo-app.git

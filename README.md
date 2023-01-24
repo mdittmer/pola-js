@@ -34,3 +34,10 @@ $ ./bash/tajs-compile.sh
 #     --Souffle--> Test output
 $ ./bash/test-js.sh
 ```
+
+## Work with example code
+
+```bash
+# Use npm to install dependencies of demo code.
+$ ./bash/install-demo-code.sh
+```
