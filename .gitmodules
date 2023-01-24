@@ -5,3 +5,6 @@
 [submodule "artifact-executor"]
 	path = artifact-executor
 	url = https://github.com/mdittmer/artifact-executor.git
+[submodule "souffle"]
+	path = souffle
+	url = https://github.com/souffle-lang/souffle.git
