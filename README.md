@@ -6,11 +6,21 @@ This project stitches together several JavaScript technologies to limit the auth
 
 This project requires the transitive dependencies of the following:
 
-- [A fork of TAJS](https://github.com/mdittmer/TAJS/tree/pola-js#how-to-build-and-run-the-tool);
+- [A fork of TAJS](https://github.com/mdittmer/TAJS/tree/pola-js#how-to-build-and-run-the-tool)
 
-- [Souffle datalog](https://github.com/mdittmer/tajs-flowgraph-souffle) version 2.1 or newer.
+  - Vendored in `TAJS` submodule
+
+- [Souffle datalog](https://github.com/mdittmer/tajs-flowgraph-souffle)
+
+  - Vendored in `souffle` submodule
 
 Project scripts generally assume a shell environment running [BASH](https://www.gnu.org/software/bash/) 5.2.1 or newer.
+
+This project optionally requires the transitive dependencies of the following:
+
+- [swc](https://github.com/swc-project/swc) (for working with "modern" JavaScript code via cross-compilation)
+
+  - Vendored in `swc` submodule
 
 ## Building
 
@@ -21,6 +31,10 @@ $ git submodule update --init --recursive
 $ source ./bash/env.sh
 # Compile TAJS.
 $ ./bash/tajs-compile.sh
+# Compile souffle.
+$ ./bash/souffle-compile.sh
+# Compile swc (may not be required, depending on use case).
+$ ./bash/swc-compile.sh
 ```
 
 ## Run tests

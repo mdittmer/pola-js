@@ -11,3 +11,6 @@
 [submodule "aws-bookstore-demo-app"]
 	path = aws-bookstore-demo-app
 	url = https://github.com/mdittmer/aws-bookstore-demo-app.git
+[submodule "swc"]
+	path = swc
+	url = https://github.com/swc-project/swc.git
