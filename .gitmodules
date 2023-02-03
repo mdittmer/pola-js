@@ -14,3 +14,6 @@
 [submodule "swc"]
 	path = swc
 	url = https://github.com/swc-project/swc.git
+[submodule "semaphoric"]
+	path = semaphoric
+	url = https://github.com/timbunce/semaphoric.git
