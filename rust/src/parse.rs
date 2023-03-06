@@ -27,12 +27,17 @@ use swc_ecma_transforms_base::resolver;
 use swc_ecma_visit::VisitMutWith;
 use thiserror::Error;
 
-#[derive(Debug)]
-pub struct Module {
-    pub swc_module: SWCModule,
+#[derive(Clone, Debug)]
+pub struct SyntaxMetadata {
     pub hygiene_top_level_mark: Mark,
     pub resolver_top_level_mark: Mark,
     pub unresolved_mark: Mark,
+}
+
+#[derive(Debug)]
+pub struct Module {
+    pub swc_module: SWCModule,
+    pub syntax_metadata: SyntaxMetadata,
 }
 
 #[tracing::instrument(skip(source_path), fields(path = source_path.as_ref().to_string_lossy().to_string()))]
@@ -152,9 +157,11 @@ pub fn parse_module(
 
         Module {
             swc_module,
-            hygiene_top_level_mark,
-            resolver_top_level_mark,
-            unresolved_mark,
+            syntax_metadata: SyntaxMetadata {
+                hygiene_top_level_mark,
+                resolver_top_level_mark,
+                unresolved_mark,
+            },
         }
     }))
 }

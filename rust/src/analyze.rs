@@ -1,18 +1,19 @@
-use std::borrow::BorrowMut;
-use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fmt::Debug;
 use std::path::Path;
 
+use crate::heap::Constant;
 use crate::parse::parse_file;
 use crate::parse::parse_file_with_handler;
 use crate::parse::parse_str;
 use crate::parse::parse_str_with_handler;
 use crate::parse::Module;
+use crate::parse::SyntaxMetadata;
 use color_eyre::Result;
 use num_bigint::BigInt as BigIntValue;
 use swc_atoms::Atom;
 use swc_atoms::JsWord;
+use swc_common::collections::AHashMap;
+use swc_common::collections::AHashSet;
 use swc_common::errors::Handler;
 use swc_common::source_map::Span;
 use swc_common::SyntaxContext;
@@ -252,16 +253,17 @@ use swc_ecma_visit::Visit;
 use swc_ecma_visit::VisitWith;
 
 #[derive(Debug)]
-pub struct FileAnalysis {
+pub struct ModuleAnalysis {
+    syntax_metadata: SyntaxMetadata,
     module_scope: Scope,
-    variable_uses_in_functions: HashMap<Id, Span>,
+    variable_uses_in_functions: AHashMap<Id, Span>,
 }
 
 pub fn analyze_file<P: AsRef<Path>>(
     source_path: P,
     syntax: Syntax,
     target: EsVersion,
-) -> Result<FileAnalysis> {
+) -> Result<ModuleAnalysis> {
     let module = parse_file(source_path, syntax, target)?;
     analyze_module(&module)
 }
@@ -271,7 +273,7 @@ pub fn analyze_file_with_handler<P: AsRef<Path>>(
     syntax: Syntax,
     target: EsVersion,
     handler: Handler,
-) -> Result<FileAnalysis> {
+) -> Result<ModuleAnalysis> {
     let module = parse_file_with_handler(source_path, syntax, target, handler)?;
     analyze_module(&module)
 }
@@ -281,7 +283,7 @@ pub fn analyze_str(
     source_path: &str,
     syntax: Syntax,
     target: EsVersion,
-) -> Result<FileAnalysis> {
+) -> Result<ModuleAnalysis> {
     let module = parse_str(source_str, source_path, syntax, target)?;
     analyze_module(&module)
 }
@@ -292,14 +294,14 @@ pub fn analyze_str_with_handler(
     syntax: Syntax,
     target: EsVersion,
     handler: Handler,
-) -> Result<FileAnalysis> {
+) -> Result<ModuleAnalysis> {
     let module = parse_str_with_handler(source_str, source_path, syntax, target, handler)?;
     analyze_module(&module)
 }
 
 #[tracing::instrument(skip(module))]
-fn analyze_module(module: &Module) -> Result<FileAnalysis> {
-    let mut state = FileAnalysisState::new();
+fn analyze_module(module: &Module) -> Result<ModuleAnalysis> {
+    let mut state = ModuleAnalysisState::new(module.syntax_metadata.clone());
     module.swc_module.visit_with(&mut state);
 
     state.into()
@@ -416,16 +418,20 @@ impl ScopeBuilder {
 }
 
 #[derive(Debug)]
-struct FileAnalysisState {
+struct ModuleAnalysisState {
+    syntax_metadata: SyntaxMetadata,
     scope_builder: Option<ScopeBuilder>,
-    variable_uses_in_functions: HashMap<Id, Span>,
+    variable_uses_in_functions: AHashMap<Id, Span>,
+    str_check: AHashSet<Constant>,
 }
 
-impl FileAnalysisState {
-    fn new() -> Self {
+impl ModuleAnalysisState {
+    fn new(syntax_metadata: SyntaxMetadata) -> Self {
         Self {
+            syntax_metadata,
             scope_builder: None,
-            variable_uses_in_functions: HashMap::new(),
+            variable_uses_in_functions: Default::default(),
+            str_check: Default::default(),
         }
     }
 
@@ -434,17 +440,18 @@ impl FileAnalysisState {
     }
 }
 
-impl From<FileAnalysisState> for Result<FileAnalysis> {
-    fn from(state: FileAnalysisState) -> Self {
+impl From<ModuleAnalysisState> for Result<ModuleAnalysis> {
+    fn from(state: ModuleAnalysisState) -> Self {
         let scope_builder = state.scope_builder.expect("scope builder");
-        Ok(FileAnalysis {
+        Ok(ModuleAnalysis {
+            syntax_metadata: state.syntax_metadata,
             module_scope: scope_builder.build(),
             variable_uses_in_functions: state.variable_uses_in_functions,
         })
     }
 }
 
-impl Visit for FileAnalysisState {
+impl Visit for ModuleAnalysisState {
     fn visit_accessibility(&mut self, n: &Accessibility) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
@@ -1223,6 +1230,7 @@ impl Visit for FileAnalysisState {
         n.visit_children_with(self)
     }
     fn visit_str(&mut self, n: &Str) {
+        self.str_check.insert(Constant::str(n.value.clone()));
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }

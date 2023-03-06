@@ -1,11 +1,9 @@
 // Header comment.
 
-a.b;
+(function() {
+  var b;
 
-function x(a) {
-  a.b;
-}
-
-function y(a) {
-  a.b;
-}
+  (() => {
+    a;
+  })();
+})();
