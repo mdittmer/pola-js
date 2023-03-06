@@ -17,237 +17,8 @@ use swc_common::collections::AHashSet;
 use swc_common::errors::Handler;
 use swc_common::source_map::Span;
 use swc_common::SyntaxContext;
-use swc_ecma_ast::Accessibility;
-use swc_ecma_ast::ArrayLit;
-use swc_ecma_ast::ArrayPat;
-use swc_ecma_ast::ArrowExpr;
-use swc_ecma_ast::AssignExpr;
-use swc_ecma_ast::AssignOp;
-use swc_ecma_ast::AssignPat;
-use swc_ecma_ast::AssignPatProp;
-use swc_ecma_ast::AssignProp;
-use swc_ecma_ast::AutoAccessor;
-use swc_ecma_ast::AwaitExpr;
-use swc_ecma_ast::BigInt;
-use swc_ecma_ast::BinExpr;
-use swc_ecma_ast::BinaryOp;
-use swc_ecma_ast::BindingIdent;
-use swc_ecma_ast::BlockStmt;
-use swc_ecma_ast::BlockStmtOrExpr;
-use swc_ecma_ast::Bool;
-use swc_ecma_ast::BreakStmt;
-use swc_ecma_ast::CallExpr;
-use swc_ecma_ast::Callee;
-use swc_ecma_ast::CatchClause;
-use swc_ecma_ast::Class;
-use swc_ecma_ast::ClassDecl;
-use swc_ecma_ast::ClassExpr;
-use swc_ecma_ast::ClassMember;
-use swc_ecma_ast::ClassMethod;
-use swc_ecma_ast::ClassProp;
-use swc_ecma_ast::ComputedPropName;
-use swc_ecma_ast::CondExpr;
-use swc_ecma_ast::Constructor;
-use swc_ecma_ast::ContinueStmt;
-use swc_ecma_ast::DebuggerStmt;
-use swc_ecma_ast::Decl;
-use swc_ecma_ast::Decorator;
-use swc_ecma_ast::DefaultDecl;
-use swc_ecma_ast::DoWhileStmt;
-use swc_ecma_ast::EmptyStmt;
-use swc_ecma_ast::EsVersion;
-use swc_ecma_ast::ExportAll;
-use swc_ecma_ast::ExportDecl;
-use swc_ecma_ast::ExportDefaultDecl;
-use swc_ecma_ast::ExportDefaultExpr;
-use swc_ecma_ast::ExportDefaultSpecifier;
-use swc_ecma_ast::ExportNamedSpecifier;
-use swc_ecma_ast::ExportNamespaceSpecifier;
-use swc_ecma_ast::ExportSpecifier;
-use swc_ecma_ast::Expr;
-use swc_ecma_ast::ExprOrSpread;
-use swc_ecma_ast::ExprStmt;
-use swc_ecma_ast::FnDecl;
-use swc_ecma_ast::FnExpr;
-use swc_ecma_ast::ForInStmt;
-use swc_ecma_ast::ForOfStmt;
-use swc_ecma_ast::ForStmt;
-use swc_ecma_ast::Function;
-use swc_ecma_ast::GetterProp;
-use swc_ecma_ast::Id;
-use swc_ecma_ast::Ident;
-use swc_ecma_ast::IfStmt;
-use swc_ecma_ast::Import;
-use swc_ecma_ast::ImportDecl;
-use swc_ecma_ast::ImportDefaultSpecifier;
-use swc_ecma_ast::ImportNamedSpecifier;
-use swc_ecma_ast::ImportSpecifier;
-use swc_ecma_ast::ImportStarAsSpecifier;
-use swc_ecma_ast::Invalid;
-use swc_ecma_ast::JSXAttr;
-use swc_ecma_ast::JSXAttrName;
-use swc_ecma_ast::JSXAttrOrSpread;
-use swc_ecma_ast::JSXAttrValue;
-use swc_ecma_ast::JSXClosingElement;
-use swc_ecma_ast::JSXClosingFragment;
-use swc_ecma_ast::JSXElement;
-use swc_ecma_ast::JSXElementChild;
-use swc_ecma_ast::JSXElementName;
-use swc_ecma_ast::JSXEmptyExpr;
-use swc_ecma_ast::JSXExpr;
-use swc_ecma_ast::JSXExprContainer;
-use swc_ecma_ast::JSXFragment;
-use swc_ecma_ast::JSXMemberExpr;
-use swc_ecma_ast::JSXNamespacedName;
-use swc_ecma_ast::JSXObject;
-use swc_ecma_ast::JSXOpeningElement;
-use swc_ecma_ast::JSXOpeningFragment;
-use swc_ecma_ast::JSXSpreadChild;
-use swc_ecma_ast::JSXText;
-use swc_ecma_ast::Key;
-use swc_ecma_ast::KeyValuePatProp;
-use swc_ecma_ast::KeyValueProp;
-use swc_ecma_ast::LabeledStmt;
-use swc_ecma_ast::Lit;
-use swc_ecma_ast::MemberExpr;
-use swc_ecma_ast::MemberProp;
-use swc_ecma_ast::MetaPropExpr;
-use swc_ecma_ast::MetaPropKind;
-use swc_ecma_ast::MethodKind;
-use swc_ecma_ast::MethodProp;
+use swc_ecma_ast as ast;
 use swc_ecma_ast::Module as SWCModule;
-use swc_ecma_ast::ModuleDecl;
-use swc_ecma_ast::ModuleExportName;
-use swc_ecma_ast::ModuleItem;
-use swc_ecma_ast::NamedExport;
-use swc_ecma_ast::NewExpr;
-use swc_ecma_ast::Null;
-use swc_ecma_ast::Number;
-use swc_ecma_ast::ObjectLit;
-use swc_ecma_ast::ObjectPat;
-use swc_ecma_ast::ObjectPatProp;
-use swc_ecma_ast::OptCall;
-use swc_ecma_ast::OptChainBase;
-use swc_ecma_ast::OptChainExpr;
-use swc_ecma_ast::Param;
-use swc_ecma_ast::ParamOrTsParamProp;
-use swc_ecma_ast::ParenExpr;
-use swc_ecma_ast::Pat;
-use swc_ecma_ast::PatOrExpr;
-use swc_ecma_ast::PrivateMethod;
-use swc_ecma_ast::PrivateName;
-use swc_ecma_ast::PrivateProp;
-use swc_ecma_ast::Program;
-use swc_ecma_ast::Prop;
-use swc_ecma_ast::PropName;
-use swc_ecma_ast::PropOrSpread;
-use swc_ecma_ast::Regex;
-use swc_ecma_ast::ReservedUnused;
-use swc_ecma_ast::RestPat;
-use swc_ecma_ast::ReturnStmt;
-use swc_ecma_ast::Script;
-use swc_ecma_ast::SeqExpr;
-use swc_ecma_ast::SetterProp;
-use swc_ecma_ast::SpreadElement;
-use swc_ecma_ast::StaticBlock;
-use swc_ecma_ast::Stmt;
-use swc_ecma_ast::Str;
-use swc_ecma_ast::Super;
-use swc_ecma_ast::SuperProp;
-use swc_ecma_ast::SuperPropExpr;
-use swc_ecma_ast::SwitchCase;
-use swc_ecma_ast::SwitchStmt;
-use swc_ecma_ast::TaggedTpl;
-use swc_ecma_ast::ThisExpr;
-use swc_ecma_ast::ThrowStmt;
-use swc_ecma_ast::Tpl;
-use swc_ecma_ast::TplElement;
-use swc_ecma_ast::TruePlusMinus;
-use swc_ecma_ast::TryStmt;
-use swc_ecma_ast::TsArrayType;
-use swc_ecma_ast::TsAsExpr;
-use swc_ecma_ast::TsCallSignatureDecl;
-use swc_ecma_ast::TsConditionalType;
-use swc_ecma_ast::TsConstAssertion;
-use swc_ecma_ast::TsConstructSignatureDecl;
-use swc_ecma_ast::TsConstructorType;
-use swc_ecma_ast::TsEntityName;
-use swc_ecma_ast::TsEnumDecl;
-use swc_ecma_ast::TsEnumMember;
-use swc_ecma_ast::TsEnumMemberId;
-use swc_ecma_ast::TsExportAssignment;
-use swc_ecma_ast::TsExprWithTypeArgs;
-use swc_ecma_ast::TsExternalModuleRef;
-use swc_ecma_ast::TsFnOrConstructorType;
-use swc_ecma_ast::TsFnParam;
-use swc_ecma_ast::TsFnType;
-use swc_ecma_ast::TsGetterSignature;
-use swc_ecma_ast::TsImportEqualsDecl;
-use swc_ecma_ast::TsImportType;
-use swc_ecma_ast::TsIndexSignature;
-use swc_ecma_ast::TsIndexedAccessType;
-use swc_ecma_ast::TsInferType;
-use swc_ecma_ast::TsInstantiation;
-use swc_ecma_ast::TsInterfaceBody;
-use swc_ecma_ast::TsInterfaceDecl;
-use swc_ecma_ast::TsIntersectionType;
-use swc_ecma_ast::TsKeywordType;
-use swc_ecma_ast::TsKeywordTypeKind;
-use swc_ecma_ast::TsLit;
-use swc_ecma_ast::TsLitType;
-use swc_ecma_ast::TsMappedType;
-use swc_ecma_ast::TsMethodSignature;
-use swc_ecma_ast::TsModuleBlock;
-use swc_ecma_ast::TsModuleDecl;
-use swc_ecma_ast::TsModuleName;
-use swc_ecma_ast::TsModuleRef;
-use swc_ecma_ast::TsNamespaceBody;
-use swc_ecma_ast::TsNamespaceDecl;
-use swc_ecma_ast::TsNamespaceExportDecl;
-use swc_ecma_ast::TsNonNullExpr;
-use swc_ecma_ast::TsOptionalType;
-use swc_ecma_ast::TsParamProp;
-use swc_ecma_ast::TsParamPropParam;
-use swc_ecma_ast::TsParenthesizedType;
-use swc_ecma_ast::TsPropertySignature;
-use swc_ecma_ast::TsQualifiedName;
-use swc_ecma_ast::TsRestType;
-use swc_ecma_ast::TsSatisfiesExpr;
-use swc_ecma_ast::TsSetterSignature;
-use swc_ecma_ast::TsThisType;
-use swc_ecma_ast::TsThisTypeOrIdent;
-use swc_ecma_ast::TsTplLitType;
-use swc_ecma_ast::TsTupleElement;
-use swc_ecma_ast::TsTupleType;
-use swc_ecma_ast::TsType;
-use swc_ecma_ast::TsTypeAliasDecl;
-use swc_ecma_ast::TsTypeAnn;
-use swc_ecma_ast::TsTypeAssertion;
-use swc_ecma_ast::TsTypeElement;
-use swc_ecma_ast::TsTypeLit;
-use swc_ecma_ast::TsTypeOperator;
-use swc_ecma_ast::TsTypeOperatorOp;
-use swc_ecma_ast::TsTypeParam;
-use swc_ecma_ast::TsTypeParamDecl;
-use swc_ecma_ast::TsTypeParamInstantiation;
-use swc_ecma_ast::TsTypePredicate;
-use swc_ecma_ast::TsTypeQuery;
-use swc_ecma_ast::TsTypeQueryExpr;
-use swc_ecma_ast::TsTypeRef;
-use swc_ecma_ast::TsUnionOrIntersectionType;
-use swc_ecma_ast::TsUnionType;
-use swc_ecma_ast::UnaryExpr;
-use swc_ecma_ast::UnaryOp;
-use swc_ecma_ast::UpdateExpr;
-use swc_ecma_ast::UpdateOp;
-use swc_ecma_ast::VarDecl;
-use swc_ecma_ast::VarDeclKind;
-use swc_ecma_ast::VarDeclOrExpr;
-use swc_ecma_ast::VarDeclOrPat;
-use swc_ecma_ast::VarDeclarator;
-use swc_ecma_ast::WhileStmt;
-use swc_ecma_ast::WithStmt;
-use swc_ecma_ast::YieldExpr;
 use swc_ecma_parser::Syntax;
 use swc_ecma_visit::Visit;
 use swc_ecma_visit::VisitWith;
@@ -256,13 +27,13 @@ use swc_ecma_visit::VisitWith;
 pub struct ModuleAnalysis {
     syntax_metadata: SyntaxMetadata,
     module_scope: Scope,
-    variable_uses_in_functions: AHashMap<Id, Span>,
+    variable_uses_in_functions: AHashMap<ast::Id, Span>,
 }
 
 pub fn analyze_file<P: AsRef<Path>>(
     source_path: P,
     syntax: Syntax,
-    target: EsVersion,
+    target: ast::EsVersion,
 ) -> Result<ModuleAnalysis> {
     let module = parse_file(source_path, syntax, target)?;
     analyze_module(&module)
@@ -271,7 +42,7 @@ pub fn analyze_file<P: AsRef<Path>>(
 pub fn analyze_file_with_handler<P: AsRef<Path>>(
     source_path: P,
     syntax: Syntax,
-    target: EsVersion,
+    target: ast::EsVersion,
     handler: Handler,
 ) -> Result<ModuleAnalysis> {
     let module = parse_file_with_handler(source_path, syntax, target, handler)?;
@@ -282,7 +53,7 @@ pub fn analyze_str(
     source_str: &str,
     source_path: &str,
     syntax: Syntax,
-    target: EsVersion,
+    target: ast::EsVersion,
 ) -> Result<ModuleAnalysis> {
     let module = parse_str(source_str, source_path, syntax, target)?;
     analyze_module(&module)
@@ -292,7 +63,7 @@ pub fn analyze_str_with_handler(
     source_str: &str,
     source_path: &str,
     syntax: Syntax,
-    target: EsVersion,
+    target: ast::EsVersion,
     handler: Handler,
 ) -> Result<ModuleAnalysis> {
     let module = parse_str_with_handler(source_str, source_path, syntax, target, handler)?;
@@ -321,20 +92,20 @@ impl From<&SWCModule> for KindedScope {
     }
 }
 
-impl From<&Function> for KindedScope {
-    fn from(function: &Function) -> Self {
+impl From<&ast::Function> for KindedScope {
+    fn from(function: &ast::Function) -> Self {
         Self::Function(function.span)
     }
 }
 
-impl From<&BlockStmt> for KindedScope {
-    fn from(block: &BlockStmt) -> Self {
+impl From<&ast::BlockStmt> for KindedScope {
+    fn from(block: &ast::BlockStmt) -> Self {
         Self::Block(block.span)
     }
 }
 
-impl From<&WithStmt> for KindedScope {
-    fn from(with: &WithStmt) -> Self {
+impl From<&ast::WithStmt> for KindedScope {
+    fn from(with: &ast::WithStmt) -> Self {
         Self::With(with.span)
     }
 }
@@ -421,7 +192,7 @@ impl ScopeBuilder {
 struct ModuleAnalysisState {
     syntax_metadata: SyntaxMetadata,
     scope_builder: Option<ScopeBuilder>,
-    variable_uses_in_functions: AHashMap<Id, Span>,
+    variable_uses_in_functions: AHashMap<ast::Id, Span>,
     str_check: AHashSet<Constant>,
 }
 
@@ -452,39 +223,39 @@ impl From<ModuleAnalysisState> for Result<ModuleAnalysis> {
 }
 
 impl Visit for ModuleAnalysisState {
-    fn visit_accessibility(&mut self, n: &Accessibility) {
+    fn visit_accessibility(&mut self, n: &ast::Accessibility) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_array_lit(&mut self, n: &ArrayLit) {
+    fn visit_array_lit(&mut self, n: &ast::ArrayLit) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_array_pat(&mut self, n: &ArrayPat) {
+    fn visit_array_pat(&mut self, n: &ast::ArrayPat) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_arrow_expr(&mut self, n: &ArrowExpr) {
+    fn visit_arrow_expr(&mut self, n: &ast::ArrowExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_assign_expr(&mut self, n: &AssignExpr) {
+    fn visit_assign_expr(&mut self, n: &ast::AssignExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_assign_op(&mut self, n: &AssignOp) {
+    fn visit_assign_op(&mut self, n: &ast::AssignOp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_assign_pat(&mut self, n: &AssignPat) {
+    fn visit_assign_pat(&mut self, n: &ast::AssignPat) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_assign_pat_prop(&mut self, n: &AssignPatProp) {
+    fn visit_assign_pat_prop(&mut self, n: &ast::AssignPatProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_assign_prop(&mut self, n: &AssignProp) {
+    fn visit_assign_prop(&mut self, n: &ast::AssignProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
@@ -492,15 +263,15 @@ impl Visit for ModuleAnalysisState {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_auto_accessor(&mut self, n: &AutoAccessor) {
+    fn visit_auto_accessor(&mut self, n: &ast::AutoAccessor) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_await_expr(&mut self, n: &AwaitExpr) {
+    fn visit_await_expr(&mut self, n: &ast::AwaitExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_big_int(&mut self, n: &BigInt) {
+    fn visit_big_int(&mut self, n: &ast::BigInt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
@@ -508,204 +279,204 @@ impl Visit for ModuleAnalysisState {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_bin_expr(&mut self, n: &BinExpr) {
+    fn visit_bin_expr(&mut self, n: &ast::BinExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_binary_op(&mut self, n: &BinaryOp) {
+    fn visit_binary_op(&mut self, n: &ast::BinaryOp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_binding_ident(&mut self, n: &BindingIdent) {
+    fn visit_binding_ident(&mut self, n: &ast::BindingIdent) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_block_stmt(&mut self, n: &BlockStmt) {
+    fn visit_block_stmt(&mut self, n: &ast::BlockStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_block_stmt_or_expr(&mut self, n: &BlockStmtOrExpr) {
+    fn visit_block_stmt_or_expr(&mut self, n: &ast::BlockStmtOrExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_bool(&mut self, n: &Bool) {
+    fn visit_bool(&mut self, n: &ast::Bool) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_break_stmt(&mut self, n: &BreakStmt) {
+    fn visit_break_stmt(&mut self, n: &ast::BreakStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_call_expr(&mut self, n: &CallExpr) {
+    fn visit_call_expr(&mut self, n: &ast::CallExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_callee(&mut self, n: &Callee) {
+    fn visit_callee(&mut self, n: &ast::Callee) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_catch_clause(&mut self, n: &CatchClause) {
+    fn visit_catch_clause(&mut self, n: &ast::CatchClause) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_class(&mut self, n: &Class) {
+    fn visit_class(&mut self, n: &ast::Class) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_class_decl(&mut self, n: &ClassDecl) {
+    fn visit_class_decl(&mut self, n: &ast::ClassDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_class_expr(&mut self, n: &ClassExpr) {
+    fn visit_class_expr(&mut self, n: &ast::ClassExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_class_member(&mut self, n: &ClassMember) {
+    fn visit_class_member(&mut self, n: &ast::ClassMember) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_class_members(&mut self, n: &[ClassMember]) {
+    fn visit_class_members(&mut self, n: &[ast::ClassMember]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_class_method(&mut self, n: &ClassMethod) {
+    fn visit_class_method(&mut self, n: &ast::ClassMethod) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_class_prop(&mut self, n: &ClassProp) {
+    fn visit_class_prop(&mut self, n: &ast::ClassProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_computed_prop_name(&mut self, n: &ComputedPropName) {
+    fn visit_computed_prop_name(&mut self, n: &ast::ComputedPropName) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_cond_expr(&mut self, n: &CondExpr) {
+    fn visit_cond_expr(&mut self, n: &ast::CondExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_constructor(&mut self, n: &Constructor) {
+    fn visit_constructor(&mut self, n: &ast::Constructor) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_continue_stmt(&mut self, n: &ContinueStmt) {
+    fn visit_continue_stmt(&mut self, n: &ast::ContinueStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_debugger_stmt(&mut self, n: &DebuggerStmt) {
+    fn visit_debugger_stmt(&mut self, n: &ast::DebuggerStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_decl(&mut self, n: &Decl) {
+    fn visit_decl(&mut self, n: &ast::Decl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_decorator(&mut self, n: &Decorator) {
+    fn visit_decorator(&mut self, n: &ast::Decorator) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_decorators(&mut self, n: &[Decorator]) {
+    fn visit_decorators(&mut self, n: &[ast::Decorator]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_default_decl(&mut self, n: &DefaultDecl) {
+    fn visit_default_decl(&mut self, n: &ast::DefaultDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_do_while_stmt(&mut self, n: &DoWhileStmt) {
+    fn visit_do_while_stmt(&mut self, n: &ast::DoWhileStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_empty_stmt(&mut self, n: &EmptyStmt) {
+    fn visit_empty_stmt(&mut self, n: &ast::EmptyStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_export_all(&mut self, n: &ExportAll) {
+    fn visit_export_all(&mut self, n: &ast::ExportAll) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_export_decl(&mut self, n: &ExportDecl) {
+    fn visit_export_decl(&mut self, n: &ast::ExportDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_export_default_decl(&mut self, n: &ExportDefaultDecl) {
+    fn visit_export_default_decl(&mut self, n: &ast::ExportDefaultDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_export_default_expr(&mut self, n: &ExportDefaultExpr) {
+    fn visit_export_default_expr(&mut self, n: &ast::ExportDefaultExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_export_default_specifier(&mut self, n: &ExportDefaultSpecifier) {
+    fn visit_export_default_specifier(&mut self, n: &ast::ExportDefaultSpecifier) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_export_named_specifier(&mut self, n: &ExportNamedSpecifier) {
+    fn visit_export_named_specifier(&mut self, n: &ast::ExportNamedSpecifier) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_export_namespace_specifier(&mut self, n: &ExportNamespaceSpecifier) {
+    fn visit_export_namespace_specifier(&mut self, n: &ast::ExportNamespaceSpecifier) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_export_specifier(&mut self, n: &ExportSpecifier) {
+    fn visit_export_specifier(&mut self, n: &ast::ExportSpecifier) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_export_specifiers(&mut self, n: &[ExportSpecifier]) {
+    fn visit_export_specifiers(&mut self, n: &[ast::ExportSpecifier]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_expr(&mut self, n: &Expr) {
+    fn visit_expr(&mut self, n: &ast::Expr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_expr_or_spread(&mut self, n: &ExprOrSpread) {
+    fn visit_expr_or_spread(&mut self, n: &ast::ExprOrSpread) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_expr_or_spreads(&mut self, n: &[ExprOrSpread]) {
+    fn visit_expr_or_spreads(&mut self, n: &[ast::ExprOrSpread]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_expr_stmt(&mut self, n: &ExprStmt) {
+    fn visit_expr_stmt(&mut self, n: &ast::ExprStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_exprs(&mut self, n: &[Box<Expr>]) {
+    fn visit_exprs(&mut self, n: &[Box<ast::Expr>]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_fn_decl(&mut self, n: &FnDecl) {
+    fn visit_fn_decl(&mut self, n: &ast::FnDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_fn_expr(&mut self, n: &FnExpr) {
+    fn visit_fn_expr(&mut self, n: &ast::FnExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_for_in_stmt(&mut self, n: &ForInStmt) {
+    fn visit_for_in_stmt(&mut self, n: &ast::ForInStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_for_of_stmt(&mut self, n: &ForOfStmt) {
+    fn visit_for_of_stmt(&mut self, n: &ast::ForOfStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_for_stmt(&mut self, n: &ForStmt) {
+    fn visit_for_stmt(&mut self, n: &ast::ForStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_function(&mut self, n: &Function) {
+    fn visit_function(&mut self, n: &ast::Function) {
         self.scope_builder().push(n);
         n.visit_children_with(self);
         self.scope_builder().pop();
     }
-    fn visit_getter_prop(&mut self, n: &GetterProp) {
+    fn visit_getter_prop(&mut self, n: &ast::GetterProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ident(&mut self, n: &Ident) {
+    fn visit_ident(&mut self, n: &ast::Ident) {
         let (atom, syntax_context) = n.to_id();
         if syntax_context != SyntaxContext::empty() {
             let function_id = self.scope_builder().function_scope_id();
@@ -714,39 +485,39 @@ impl Visit for ModuleAnalysisState {
         }
         n.visit_children_with(self)
     }
-    fn visit_if_stmt(&mut self, n: &IfStmt) {
+    fn visit_if_stmt(&mut self, n: &ast::IfStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_import(&mut self, n: &Import) {
+    fn visit_import(&mut self, n: &ast::Import) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_import_decl(&mut self, n: &ImportDecl) {
+    fn visit_import_decl(&mut self, n: &ast::ImportDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_import_default_specifier(&mut self, n: &ImportDefaultSpecifier) {
+    fn visit_import_default_specifier(&mut self, n: &ast::ImportDefaultSpecifier) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_import_named_specifier(&mut self, n: &ImportNamedSpecifier) {
+    fn visit_import_named_specifier(&mut self, n: &ast::ImportNamedSpecifier) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_import_specifier(&mut self, n: &ImportSpecifier) {
+    fn visit_import_specifier(&mut self, n: &ast::ImportSpecifier) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_import_specifiers(&mut self, n: &[ImportSpecifier]) {
+    fn visit_import_specifiers(&mut self, n: &[ast::ImportSpecifier]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_import_star_as_specifier(&mut self, n: &ImportStarAsSpecifier) {
+    fn visit_import_star_as_specifier(&mut self, n: &ast::ImportStarAsSpecifier) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_invalid(&mut self, n: &Invalid) {
+    fn visit_invalid(&mut self, n: &ast::Invalid) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
@@ -754,135 +525,135 @@ impl Visit for ModuleAnalysisState {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_attr(&mut self, n: &JSXAttr) {
+    fn visit_jsx_attr(&mut self, n: &ast::JSXAttr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_attr_name(&mut self, n: &JSXAttrName) {
+    fn visit_jsx_attr_name(&mut self, n: &ast::JSXAttrName) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_attr_or_spread(&mut self, n: &JSXAttrOrSpread) {
+    fn visit_jsx_attr_or_spread(&mut self, n: &ast::JSXAttrOrSpread) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_attr_or_spreads(&mut self, n: &[JSXAttrOrSpread]) {
+    fn visit_jsx_attr_or_spreads(&mut self, n: &[ast::JSXAttrOrSpread]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_attr_value(&mut self, n: &JSXAttrValue) {
+    fn visit_jsx_attr_value(&mut self, n: &ast::JSXAttrValue) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_closing_element(&mut self, n: &JSXClosingElement) {
+    fn visit_jsx_closing_element(&mut self, n: &ast::JSXClosingElement) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_closing_fragment(&mut self, n: &JSXClosingFragment) {
+    fn visit_jsx_closing_fragment(&mut self, n: &ast::JSXClosingFragment) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_element(&mut self, n: &JSXElement) {
+    fn visit_jsx_element(&mut self, n: &ast::JSXElement) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_element_child(&mut self, n: &JSXElementChild) {
+    fn visit_jsx_element_child(&mut self, n: &ast::JSXElementChild) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_element_children(&mut self, n: &[JSXElementChild]) {
+    fn visit_jsx_element_children(&mut self, n: &[ast::JSXElementChild]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_element_name(&mut self, n: &JSXElementName) {
+    fn visit_jsx_element_name(&mut self, n: &ast::JSXElementName) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_empty_expr(&mut self, n: &JSXEmptyExpr) {
+    fn visit_jsx_empty_expr(&mut self, n: &ast::JSXEmptyExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_expr(&mut self, n: &JSXExpr) {
+    fn visit_jsx_expr(&mut self, n: &ast::JSXExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_expr_container(&mut self, n: &JSXExprContainer) {
+    fn visit_jsx_expr_container(&mut self, n: &ast::JSXExprContainer) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_fragment(&mut self, n: &JSXFragment) {
+    fn visit_jsx_fragment(&mut self, n: &ast::JSXFragment) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_member_expr(&mut self, n: &JSXMemberExpr) {
+    fn visit_jsx_member_expr(&mut self, n: &ast::JSXMemberExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_namespaced_name(&mut self, n: &JSXNamespacedName) {
+    fn visit_jsx_namespaced_name(&mut self, n: &ast::JSXNamespacedName) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_object(&mut self, n: &JSXObject) {
+    fn visit_jsx_object(&mut self, n: &ast::JSXObject) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_opening_element(&mut self, n: &JSXOpeningElement) {
+    fn visit_jsx_opening_element(&mut self, n: &ast::JSXOpeningElement) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_opening_fragment(&mut self, n: &JSXOpeningFragment) {
+    fn visit_jsx_opening_fragment(&mut self, n: &ast::JSXOpeningFragment) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_spread_child(&mut self, n: &JSXSpreadChild) {
+    fn visit_jsx_spread_child(&mut self, n: &ast::JSXSpreadChild) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_jsx_text(&mut self, n: &JSXText) {
+    fn visit_jsx_text(&mut self, n: &ast::JSXText) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_key(&mut self, n: &Key) {
+    fn visit_key(&mut self, n: &ast::Key) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_key_value_pat_prop(&mut self, n: &KeyValuePatProp) {
+    fn visit_key_value_pat_prop(&mut self, n: &ast::KeyValuePatProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_key_value_prop(&mut self, n: &KeyValueProp) {
+    fn visit_key_value_prop(&mut self, n: &ast::KeyValueProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_labeled_stmt(&mut self, n: &LabeledStmt) {
+    fn visit_labeled_stmt(&mut self, n: &ast::LabeledStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_lit(&mut self, n: &Lit) {
+    fn visit_lit(&mut self, n: &ast::Lit) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_member_expr(&mut self, n: &MemberExpr) {
+    fn visit_member_expr(&mut self, n: &ast::MemberExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_member_prop(&mut self, n: &MemberProp) {
+    fn visit_member_prop(&mut self, n: &ast::MemberProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_meta_prop_expr(&mut self, n: &MetaPropExpr) {
+    fn visit_meta_prop_expr(&mut self, n: &ast::MetaPropExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_meta_prop_kind(&mut self, n: &MetaPropKind) {
+    fn visit_meta_prop_kind(&mut self, n: &ast::MetaPropKind) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_method_kind(&mut self, n: &MethodKind) {
+    fn visit_method_kind(&mut self, n: &ast::MethodKind) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_method_prop(&mut self, n: &MethodProp) {
+    fn visit_method_prop(&mut self, n: &ast::MethodProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
@@ -891,55 +662,55 @@ impl Visit for ModuleAnalysisState {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_module_decl(&mut self, n: &ModuleDecl) {
+    fn visit_module_decl(&mut self, n: &ast::ModuleDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_module_export_name(&mut self, n: &ModuleExportName) {
+    fn visit_module_export_name(&mut self, n: &ast::ModuleExportName) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_module_item(&mut self, n: &ModuleItem) {
+    fn visit_module_item(&mut self, n: &ast::ModuleItem) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_module_items(&mut self, n: &[ModuleItem]) {
+    fn visit_module_items(&mut self, n: &[ast::ModuleItem]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_named_export(&mut self, n: &NamedExport) {
+    fn visit_named_export(&mut self, n: &ast::NamedExport) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_new_expr(&mut self, n: &NewExpr) {
+    fn visit_new_expr(&mut self, n: &ast::NewExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_null(&mut self, n: &Null) {
+    fn visit_null(&mut self, n: &ast::Null) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_number(&mut self, n: &Number) {
+    fn visit_number(&mut self, n: &ast::Number) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_object_lit(&mut self, n: &ObjectLit) {
+    fn visit_object_lit(&mut self, n: &ast::ObjectLit) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_object_pat(&mut self, n: &ObjectPat) {
+    fn visit_object_pat(&mut self, n: &ast::ObjectPat) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_object_pat_prop(&mut self, n: &ObjectPatProp) {
+    fn visit_object_pat_prop(&mut self, n: &ast::ObjectPatProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_object_pat_props(&mut self, n: &[ObjectPatProp]) {
+    fn visit_object_pat_props(&mut self, n: &[ast::ObjectPatProp]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_opt_accessibility(&mut self, n: Option<&Accessibility>) {
+    fn visit_opt_accessibility(&mut self, n: Option<&ast::Accessibility>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
@@ -951,85 +722,85 @@ impl Visit for ModuleAnalysisState {
             n.visit_with(self);
         });
     }
-    fn visit_opt_block_stmt(&mut self, n: Option<&BlockStmt>) {
+    fn visit_opt_block_stmt(&mut self, n: Option<&ast::BlockStmt>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_call(&mut self, n: &OptCall) {
+    fn visit_opt_call(&mut self, n: &ast::OptCall) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_opt_catch_clause(&mut self, n: Option<&CatchClause>) {
+    fn visit_opt_catch_clause(&mut self, n: Option<&ast::CatchClause>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_chain_base(&mut self, n: &OptChainBase) {
+    fn visit_opt_chain_base(&mut self, n: &ast::OptChainBase) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_opt_chain_expr(&mut self, n: &OptChainExpr) {
+    fn visit_opt_chain_expr(&mut self, n: &ast::OptChainExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_opt_expr(&mut self, n: Option<&Box<Expr>>) {
+    fn visit_opt_expr(&mut self, n: Option<&Box<ast::Expr>>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_expr_or_spread(&mut self, n: Option<&ExprOrSpread>) {
+    fn visit_opt_expr_or_spread(&mut self, n: Option<&ast::ExprOrSpread>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_expr_or_spreads(&mut self, n: Option<&[ExprOrSpread]>) {
+    fn visit_opt_expr_or_spreads(&mut self, n: Option<&[ast::ExprOrSpread]>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_ident(&mut self, n: Option<&Ident>) {
+    fn visit_opt_ident(&mut self, n: Option<&ast::Ident>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_jsx_attr_value(&mut self, n: Option<&JSXAttrValue>) {
+    fn visit_opt_jsx_attr_value(&mut self, n: Option<&ast::JSXAttrValue>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_jsx_closing_element(&mut self, n: Option<&JSXClosingElement>) {
+    fn visit_opt_jsx_closing_element(&mut self, n: Option<&ast::JSXClosingElement>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_module_export_name(&mut self, n: Option<&ModuleExportName>) {
+    fn visit_opt_module_export_name(&mut self, n: Option<&ast::ModuleExportName>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_module_items(&mut self, n: Option<&[ModuleItem]>) {
+    fn visit_opt_module_items(&mut self, n: Option<&[ast::ModuleItem]>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_object_lit(&mut self, n: Option<&Box<ObjectLit>>) {
+    fn visit_opt_object_lit(&mut self, n: Option<&Box<ast::ObjectLit>>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_pat(&mut self, n: Option<&Pat>) {
+    fn visit_opt_pat(&mut self, n: Option<&ast::Pat>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
@@ -1041,67 +812,67 @@ impl Visit for ModuleAnalysisState {
             n.visit_with(self);
         });
     }
-    fn visit_opt_stmt(&mut self, n: Option<&Box<Stmt>>) {
+    fn visit_opt_stmt(&mut self, n: Option<&Box<ast::Stmt>>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_str(&mut self, n: Option<&Box<Str>>) {
+    fn visit_opt_str(&mut self, n: Option<&Box<ast::Str>>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_true_plus_minus(&mut self, n: Option<&TruePlusMinus>) {
+    fn visit_opt_true_plus_minus(&mut self, n: Option<&ast::TruePlusMinus>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_ts_entity_name(&mut self, n: Option<&TsEntityName>) {
+    fn visit_opt_ts_entity_name(&mut self, n: Option<&ast::TsEntityName>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_ts_namespace_body(&mut self, n: Option<&TsNamespaceBody>) {
+    fn visit_opt_ts_namespace_body(&mut self, n: Option<&ast::TsNamespaceBody>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_ts_type(&mut self, n: Option<&Box<TsType>>) {
+    fn visit_opt_ts_type(&mut self, n: Option<&Box<ast::TsType>>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_ts_type_ann(&mut self, n: Option<&Box<TsTypeAnn>>) {
+    fn visit_opt_ts_type_ann(&mut self, n: Option<&Box<ast::TsTypeAnn>>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_ts_type_param_decl(&mut self, n: Option<&Box<TsTypeParamDecl>>) {
+    fn visit_opt_ts_type_param_decl(&mut self, n: Option<&Box<ast::TsTypeParamDecl>>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_ts_type_param_instantiation(&mut self, n: Option<&Box<TsTypeParamInstantiation>>) {
+    fn visit_opt_ts_type_param_instantiation(&mut self, n: Option<&Box<ast::TsTypeParamInstantiation>>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_var_decl_or_expr(&mut self, n: Option<&VarDeclOrExpr>) {
+    fn visit_opt_var_decl_or_expr(&mut self, n: Option<&ast::VarDeclOrExpr>) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
         });
     }
-    fn visit_opt_vec_expr_or_spreads(&mut self, n: &[Option<ExprOrSpread>]) {
+    fn visit_opt_vec_expr_or_spreads(&mut self, n: &[Option<ast::ExprOrSpread>]) {
         // TODO: Implement analysis visitor.
         n.iter().for_each(|n| {
             n.as_ref().map(|n| {
@@ -1109,7 +880,7 @@ impl Visit for ModuleAnalysisState {
             });
         })
     }
-    fn visit_opt_vec_pats(&mut self, n: &[Option<Pat>]) {
+    fn visit_opt_vec_pats(&mut self, n: &[Option<ast::Pat>]) {
         // TODO: Implement analysis visitor.
         n.iter().for_each(|n| {
             n.as_ref().map(|n| {
@@ -1117,95 +888,95 @@ impl Visit for ModuleAnalysisState {
             });
         })
     }
-    fn visit_param(&mut self, n: &Param) {
+    fn visit_param(&mut self, n: &ast::Param) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_param_or_ts_param_prop(&mut self, n: &ParamOrTsParamProp) {
+    fn visit_param_or_ts_param_prop(&mut self, n: &ast::ParamOrTsParamProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_param_or_ts_param_props(&mut self, n: &[ParamOrTsParamProp]) {
+    fn visit_param_or_ts_param_props(&mut self, n: &[ast::ParamOrTsParamProp]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_params(&mut self, n: &[Param]) {
+    fn visit_params(&mut self, n: &[ast::Param]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_paren_expr(&mut self, n: &ParenExpr) {
+    fn visit_paren_expr(&mut self, n: &ast::ParenExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_pat(&mut self, n: &Pat) {
+    fn visit_pat(&mut self, n: &ast::Pat) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_pat_or_expr(&mut self, n: &PatOrExpr) {
+    fn visit_pat_or_expr(&mut self, n: &ast::PatOrExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_pats(&mut self, n: &[Pat]) {
+    fn visit_pats(&mut self, n: &[ast::Pat]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_private_method(&mut self, n: &PrivateMethod) {
+    fn visit_private_method(&mut self, n: &ast::PrivateMethod) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_private_name(&mut self, n: &PrivateName) {
+    fn visit_private_name(&mut self, n: &ast::PrivateName) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_private_prop(&mut self, n: &PrivateProp) {
+    fn visit_private_prop(&mut self, n: &ast::PrivateProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_program(&mut self, n: &Program) {
+    fn visit_program(&mut self, n: &ast::Program) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_prop(&mut self, n: &Prop) {
+    fn visit_prop(&mut self, n: &ast::Prop) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_prop_name(&mut self, n: &PropName) {
+    fn visit_prop_name(&mut self, n: &ast::PropName) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_prop_or_spread(&mut self, n: &PropOrSpread) {
+    fn visit_prop_or_spread(&mut self, n: &ast::PropOrSpread) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_prop_or_spreads(&mut self, n: &[PropOrSpread]) {
+    fn visit_prop_or_spreads(&mut self, n: &[ast::PropOrSpread]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_regex(&mut self, n: &Regex) {
+    fn visit_regex(&mut self, n: &ast::Regex) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_reserved_unused(&mut self, n: &ReservedUnused) {
+    fn visit_reserved_unused(&mut self, n: &ast::ReservedUnused) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_rest_pat(&mut self, n: &RestPat) {
+    fn visit_rest_pat(&mut self, n: &ast::RestPat) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_return_stmt(&mut self, n: &ReturnStmt) {
+    fn visit_return_stmt(&mut self, n: &ast::ReturnStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_script(&mut self, n: &Script) {
+    fn visit_script(&mut self, n: &ast::Script) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_seq_expr(&mut self, n: &SeqExpr) {
+    fn visit_seq_expr(&mut self, n: &ast::SeqExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_setter_prop(&mut self, n: &SetterProp) {
+    fn visit_setter_prop(&mut self, n: &ast::SetterProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
@@ -1213,449 +984,449 @@ impl Visit for ModuleAnalysisState {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_spread_element(&mut self, n: &SpreadElement) {
+    fn visit_spread_element(&mut self, n: &ast::SpreadElement) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_static_block(&mut self, n: &StaticBlock) {
+    fn visit_static_block(&mut self, n: &ast::StaticBlock) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_stmt(&mut self, n: &Stmt) {
+    fn visit_stmt(&mut self, n: &ast::Stmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_stmts(&mut self, n: &[Stmt]) {
+    fn visit_stmts(&mut self, n: &[ast::Stmt]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_str(&mut self, n: &Str) {
+    fn visit_str(&mut self, n: &ast::Str) {
         self.str_check.insert(Constant::str(n.value.clone()));
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_super(&mut self, n: &Super) {
+    fn visit_super(&mut self, n: &ast::Super) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_super_prop(&mut self, n: &SuperProp) {
+    fn visit_super_prop(&mut self, n: &ast::SuperProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_super_prop_expr(&mut self, n: &SuperPropExpr) {
+    fn visit_super_prop_expr(&mut self, n: &ast::SuperPropExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_switch_case(&mut self, n: &SwitchCase) {
+    fn visit_switch_case(&mut self, n: &ast::SwitchCase) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_switch_cases(&mut self, n: &[SwitchCase]) {
+    fn visit_switch_cases(&mut self, n: &[ast::SwitchCase]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_switch_stmt(&mut self, n: &SwitchStmt) {
+    fn visit_switch_stmt(&mut self, n: &ast::SwitchStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_tagged_tpl(&mut self, n: &TaggedTpl) {
+    fn visit_tagged_tpl(&mut self, n: &ast::TaggedTpl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_this_expr(&mut self, n: &ThisExpr) {
+    fn visit_this_expr(&mut self, n: &ast::ThisExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_throw_stmt(&mut self, n: &ThrowStmt) {
+    fn visit_throw_stmt(&mut self, n: &ast::ThrowStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_tpl(&mut self, n: &Tpl) {
+    fn visit_tpl(&mut self, n: &ast::Tpl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_tpl_element(&mut self, n: &TplElement) {
+    fn visit_tpl_element(&mut self, n: &ast::TplElement) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_tpl_elements(&mut self, n: &[TplElement]) {
+    fn visit_tpl_elements(&mut self, n: &[ast::TplElement]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_true_plus_minus(&mut self, n: &TruePlusMinus) {
+    fn visit_true_plus_minus(&mut self, n: &ast::TruePlusMinus) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_try_stmt(&mut self, n: &TryStmt) {
+    fn visit_try_stmt(&mut self, n: &ast::TryStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_array_type(&mut self, n: &TsArrayType) {
+    fn visit_ts_array_type(&mut self, n: &ast::TsArrayType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_as_expr(&mut self, n: &TsAsExpr) {
+    fn visit_ts_as_expr(&mut self, n: &ast::TsAsExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_call_signature_decl(&mut self, n: &TsCallSignatureDecl) {
+    fn visit_ts_call_signature_decl(&mut self, n: &ast::TsCallSignatureDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_conditional_type(&mut self, n: &TsConditionalType) {
+    fn visit_ts_conditional_type(&mut self, n: &ast::TsConditionalType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_const_assertion(&mut self, n: &TsConstAssertion) {
+    fn visit_ts_const_assertion(&mut self, n: &ast::TsConstAssertion) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_construct_signature_decl(&mut self, n: &TsConstructSignatureDecl) {
+    fn visit_ts_construct_signature_decl(&mut self, n: &ast::TsConstructSignatureDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_constructor_type(&mut self, n: &TsConstructorType) {
+    fn visit_ts_constructor_type(&mut self, n: &ast::TsConstructorType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_entity_name(&mut self, n: &TsEntityName) {
+    fn visit_ts_entity_name(&mut self, n: &ast::TsEntityName) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_enum_decl(&mut self, n: &TsEnumDecl) {
+    fn visit_ts_enum_decl(&mut self, n: &ast::TsEnumDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_enum_member(&mut self, n: &TsEnumMember) {
+    fn visit_ts_enum_member(&mut self, n: &ast::TsEnumMember) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_enum_member_id(&mut self, n: &TsEnumMemberId) {
+    fn visit_ts_enum_member_id(&mut self, n: &ast::TsEnumMemberId) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_enum_members(&mut self, n: &[TsEnumMember]) {
+    fn visit_ts_enum_members(&mut self, n: &[ast::TsEnumMember]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_export_assignment(&mut self, n: &TsExportAssignment) {
+    fn visit_ts_export_assignment(&mut self, n: &ast::TsExportAssignment) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_expr_with_type_args(&mut self, n: &TsExprWithTypeArgs) {
+    fn visit_ts_expr_with_type_args(&mut self, n: &ast::TsExprWithTypeArgs) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_expr_with_type_args_vec(&mut self, n: &[TsExprWithTypeArgs]) {
+    fn visit_ts_expr_with_type_args_vec(&mut self, n: &[ast::TsExprWithTypeArgs]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_external_module_ref(&mut self, n: &TsExternalModuleRef) {
+    fn visit_ts_external_module_ref(&mut self, n: &ast::TsExternalModuleRef) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_fn_or_constructor_type(&mut self, n: &TsFnOrConstructorType) {
+    fn visit_ts_fn_or_constructor_type(&mut self, n: &ast::TsFnOrConstructorType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_fn_param(&mut self, n: &TsFnParam) {
+    fn visit_ts_fn_param(&mut self, n: &ast::TsFnParam) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_fn_params(&mut self, n: &[TsFnParam]) {
+    fn visit_ts_fn_params(&mut self, n: &[ast::TsFnParam]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_fn_type(&mut self, n: &TsFnType) {
+    fn visit_ts_fn_type(&mut self, n: &ast::TsFnType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_getter_signature(&mut self, n: &TsGetterSignature) {
+    fn visit_ts_getter_signature(&mut self, n: &ast::TsGetterSignature) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_import_equals_decl(&mut self, n: &TsImportEqualsDecl) {
+    fn visit_ts_import_equals_decl(&mut self, n: &ast::TsImportEqualsDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_import_type(&mut self, n: &TsImportType) {
+    fn visit_ts_import_type(&mut self, n: &ast::TsImportType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_index_signature(&mut self, n: &TsIndexSignature) {
+    fn visit_ts_index_signature(&mut self, n: &ast::TsIndexSignature) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_indexed_access_type(&mut self, n: &TsIndexedAccessType) {
+    fn visit_ts_indexed_access_type(&mut self, n: &ast::TsIndexedAccessType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_infer_type(&mut self, n: &TsInferType) {
+    fn visit_ts_infer_type(&mut self, n: &ast::TsInferType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_instantiation(&mut self, n: &TsInstantiation) {
+    fn visit_ts_instantiation(&mut self, n: &ast::TsInstantiation) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_interface_body(&mut self, n: &TsInterfaceBody) {
+    fn visit_ts_interface_body(&mut self, n: &ast::TsInterfaceBody) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_interface_decl(&mut self, n: &TsInterfaceDecl) {
+    fn visit_ts_interface_decl(&mut self, n: &ast::TsInterfaceDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_intersection_type(&mut self, n: &TsIntersectionType) {
+    fn visit_ts_intersection_type(&mut self, n: &ast::TsIntersectionType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_keyword_type(&mut self, n: &TsKeywordType) {
+    fn visit_ts_keyword_type(&mut self, n: &ast::TsKeywordType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_keyword_type_kind(&mut self, n: &TsKeywordTypeKind) {
+    fn visit_ts_keyword_type_kind(&mut self, n: &ast::TsKeywordTypeKind) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_lit(&mut self, n: &TsLit) {
+    fn visit_ts_lit(&mut self, n: &ast::TsLit) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_lit_type(&mut self, n: &TsLitType) {
+    fn visit_ts_lit_type(&mut self, n: &ast::TsLitType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_mapped_type(&mut self, n: &TsMappedType) {
+    fn visit_ts_mapped_type(&mut self, n: &ast::TsMappedType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_method_signature(&mut self, n: &TsMethodSignature) {
+    fn visit_ts_method_signature(&mut self, n: &ast::TsMethodSignature) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_module_block(&mut self, n: &TsModuleBlock) {
+    fn visit_ts_module_block(&mut self, n: &ast::TsModuleBlock) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_module_decl(&mut self, n: &TsModuleDecl) {
+    fn visit_ts_module_decl(&mut self, n: &ast::TsModuleDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_module_name(&mut self, n: &TsModuleName) {
+    fn visit_ts_module_name(&mut self, n: &ast::TsModuleName) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_module_ref(&mut self, n: &TsModuleRef) {
+    fn visit_ts_module_ref(&mut self, n: &ast::TsModuleRef) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_namespace_body(&mut self, n: &TsNamespaceBody) {
+    fn visit_ts_namespace_body(&mut self, n: &ast::TsNamespaceBody) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_namespace_decl(&mut self, n: &TsNamespaceDecl) {
+    fn visit_ts_namespace_decl(&mut self, n: &ast::TsNamespaceDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_namespace_export_decl(&mut self, n: &TsNamespaceExportDecl) {
+    fn visit_ts_namespace_export_decl(&mut self, n: &ast::TsNamespaceExportDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_non_null_expr(&mut self, n: &TsNonNullExpr) {
+    fn visit_ts_non_null_expr(&mut self, n: &ast::TsNonNullExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_optional_type(&mut self, n: &TsOptionalType) {
+    fn visit_ts_optional_type(&mut self, n: &ast::TsOptionalType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_param_prop(&mut self, n: &TsParamProp) {
+    fn visit_ts_param_prop(&mut self, n: &ast::TsParamProp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_param_prop_param(&mut self, n: &TsParamPropParam) {
+    fn visit_ts_param_prop_param(&mut self, n: &ast::TsParamPropParam) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_parenthesized_type(&mut self, n: &TsParenthesizedType) {
+    fn visit_ts_parenthesized_type(&mut self, n: &ast::TsParenthesizedType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_property_signature(&mut self, n: &TsPropertySignature) {
+    fn visit_ts_property_signature(&mut self, n: &ast::TsPropertySignature) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_qualified_name(&mut self, n: &TsQualifiedName) {
+    fn visit_ts_qualified_name(&mut self, n: &ast::TsQualifiedName) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_rest_type(&mut self, n: &TsRestType) {
+    fn visit_ts_rest_type(&mut self, n: &ast::TsRestType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_satisfies_expr(&mut self, n: &TsSatisfiesExpr) {
+    fn visit_ts_satisfies_expr(&mut self, n: &ast::TsSatisfiesExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_setter_signature(&mut self, n: &TsSetterSignature) {
+    fn visit_ts_setter_signature(&mut self, n: &ast::TsSetterSignature) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_this_type(&mut self, n: &TsThisType) {
+    fn visit_ts_this_type(&mut self, n: &ast::TsThisType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_this_type_or_ident(&mut self, n: &TsThisTypeOrIdent) {
+    fn visit_ts_this_type_or_ident(&mut self, n: &ast::TsThisTypeOrIdent) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_tpl_lit_type(&mut self, n: &TsTplLitType) {
+    fn visit_ts_tpl_lit_type(&mut self, n: &ast::TsTplLitType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_tuple_element(&mut self, n: &TsTupleElement) {
+    fn visit_ts_tuple_element(&mut self, n: &ast::TsTupleElement) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_tuple_elements(&mut self, n: &[TsTupleElement]) {
+    fn visit_ts_tuple_elements(&mut self, n: &[ast::TsTupleElement]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_tuple_type(&mut self, n: &TsTupleType) {
+    fn visit_ts_tuple_type(&mut self, n: &ast::TsTupleType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type(&mut self, n: &TsType) {
+    fn visit_ts_type(&mut self, n: &ast::TsType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_alias_decl(&mut self, n: &TsTypeAliasDecl) {
+    fn visit_ts_type_alias_decl(&mut self, n: &ast::TsTypeAliasDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_ann(&mut self, n: &TsTypeAnn) {
+    fn visit_ts_type_ann(&mut self, n: &ast::TsTypeAnn) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_assertion(&mut self, n: &TsTypeAssertion) {
+    fn visit_ts_type_assertion(&mut self, n: &ast::TsTypeAssertion) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_element(&mut self, n: &TsTypeElement) {
+    fn visit_ts_type_element(&mut self, n: &ast::TsTypeElement) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_elements(&mut self, n: &[TsTypeElement]) {
+    fn visit_ts_type_elements(&mut self, n: &[ast::TsTypeElement]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_lit(&mut self, n: &TsTypeLit) {
+    fn visit_ts_type_lit(&mut self, n: &ast::TsTypeLit) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_operator(&mut self, n: &TsTypeOperator) {
+    fn visit_ts_type_operator(&mut self, n: &ast::TsTypeOperator) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_operator_op(&mut self, n: &TsTypeOperatorOp) {
+    fn visit_ts_type_operator_op(&mut self, n: &ast::TsTypeOperatorOp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_param(&mut self, n: &TsTypeParam) {
+    fn visit_ts_type_param(&mut self, n: &ast::TsTypeParam) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_param_decl(&mut self, n: &TsTypeParamDecl) {
+    fn visit_ts_type_param_decl(&mut self, n: &ast::TsTypeParamDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_param_instantiation(&mut self, n: &TsTypeParamInstantiation) {
+    fn visit_ts_type_param_instantiation(&mut self, n: &ast::TsTypeParamInstantiation) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_params(&mut self, n: &[TsTypeParam]) {
+    fn visit_ts_type_params(&mut self, n: &[ast::TsTypeParam]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_predicate(&mut self, n: &TsTypePredicate) {
+    fn visit_ts_type_predicate(&mut self, n: &ast::TsTypePredicate) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_query(&mut self, n: &TsTypeQuery) {
+    fn visit_ts_type_query(&mut self, n: &ast::TsTypeQuery) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_query_expr(&mut self, n: &TsTypeQueryExpr) {
+    fn visit_ts_type_query_expr(&mut self, n: &ast::TsTypeQueryExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_type_ref(&mut self, n: &TsTypeRef) {
+    fn visit_ts_type_ref(&mut self, n: &ast::TsTypeRef) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_types(&mut self, n: &[Box<TsType>]) {
+    fn visit_ts_types(&mut self, n: &[Box<ast::TsType>]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_union_or_intersection_type(&mut self, n: &TsUnionOrIntersectionType) {
+    fn visit_ts_union_or_intersection_type(&mut self, n: &ast::TsUnionOrIntersectionType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_ts_union_type(&mut self, n: &TsUnionType) {
+    fn visit_ts_union_type(&mut self, n: &ast::TsUnionType) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_unary_expr(&mut self, n: &UnaryExpr) {
+    fn visit_unary_expr(&mut self, n: &ast::UnaryExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_unary_op(&mut self, n: &UnaryOp) {
+    fn visit_unary_op(&mut self, n: &ast::UnaryOp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_update_expr(&mut self, n: &UpdateExpr) {
+    fn visit_update_expr(&mut self, n: &ast::UpdateExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_update_op(&mut self, n: &UpdateOp) {
+    fn visit_update_op(&mut self, n: &ast::UpdateOp) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_var_decl(&mut self, n: &VarDecl) {
+    fn visit_var_decl(&mut self, n: &ast::VarDecl) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_var_decl_kind(&mut self, n: &VarDeclKind) {
+    fn visit_var_decl_kind(&mut self, n: &ast::VarDeclKind) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_var_decl_or_expr(&mut self, n: &VarDeclOrExpr) {
+    fn visit_var_decl_or_expr(&mut self, n: &ast::VarDeclOrExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_var_decl_or_pat(&mut self, n: &VarDeclOrPat) {
+    fn visit_var_decl_or_pat(&mut self, n: &ast::VarDeclOrPat) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_var_declarator(&mut self, n: &VarDeclarator) {
+    fn visit_var_declarator(&mut self, n: &ast::VarDeclarator) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_var_declarators(&mut self, n: &[VarDeclarator]) {
+    fn visit_var_declarators(&mut self, n: &[ast::VarDeclarator]) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_while_stmt(&mut self, n: &WhileStmt) {
+    fn visit_while_stmt(&mut self, n: &ast::WhileStmt) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_with_stmt(&mut self, n: &WithStmt) {
+    fn visit_with_stmt(&mut self, n: &ast::WithStmt) {
         self.scope_builder().push(n);
         n.visit_children_with(self);
         self.scope_builder().pop();
     }
-    fn visit_yield_expr(&mut self, n: &YieldExpr) {
+    fn visit_yield_expr(&mut self, n: &ast::YieldExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
