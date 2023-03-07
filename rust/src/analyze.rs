@@ -18,8 +18,8 @@ use swc_common::collections::AHashMap;
 use swc_common::collections::AHashSet;
 use swc_common::errors::Handler;
 use swc_common::source_map::Span;
-use swc_common::Spanned;
 use swc_common::SyntaxContext;
+use swc_common::GLOBALS;
 use swc_ecma_ast as ast;
 use swc_ecma_ast::Module as SWCModule;
 use swc_ecma_parser::Syntax;
@@ -256,6 +256,9 @@ impl ScopeBuilder {
         let mut ancestors1 = self.ancestors(scope1);
         let mut ancestors2 = self.ancestors(scope2);
 
+        println!("ancestors1: {:?}", ancestors1);
+        println!("ancestors2: {:?}", ancestors2);
+
         let mut common_ancestor = None;
         while let (Some(ancestor1), Some(ancestor2)) = (ancestors1.pop(), ancestors2.pop()) {
             if ancestor1 != ancestor2 {
@@ -265,7 +268,7 @@ impl ScopeBuilder {
             }
         }
 
-        None
+        common_ancestor
     }
 
     fn ancestors<'a>(&'a self, span: &Span) -> Vec<&'a Span> {
@@ -302,6 +305,7 @@ impl ScopeBuilder {
 #[derive(Debug)]
 struct ModuleAnalysisState {
     syntax_metadata: SyntaxMetadata,
+    module: Option<Span>,
     scope_builder: Option<ScopeBuilder>,
     variable_scopes: AHashMap<ast::Id, Span>,
     str_check: AHashSet<Constant>,
@@ -311,6 +315,7 @@ impl ModuleAnalysisState {
     fn new(syntax_metadata: SyntaxMetadata) -> Self {
         Self {
             syntax_metadata,
+            module: None,
             scope_builder: None,
             variable_scopes: Default::default(),
             str_check: Default::default(),
@@ -602,20 +607,29 @@ impl Visit for ModuleAnalysisState {
     }
     fn visit_ident(&mut self, n: &ast::Ident) {
         let (atom, syntax_context) = n.to_id();
-        if syntax_context != SyntaxContext::empty() {
-            let scope_builder = self.scope_builder();
-            let current_scope = scope_builder.current();
 
-            match self.variable_scopes.entry((atom, syntax_context)) {
-                Entry::Occupied(mut o) => {
-                    let scope = o.get();
-                    let effective_scope = scope_builder
-                        .common_ancestor(current_scope.span(), scope)
-                        .expect("scopes have common ancestor");
-                    o.insert(effective_scope);
-                }
-                Entry::Vacant(v) => {
-                    v.insert(*current_scope.span());
+        // Contextless identifiers do not contain unqualified variable references.
+        // E.g., in `function a(b) { c.d; }` `a`, `b`, and `c` have a non-empty context, but `d`
+        // does not.
+        if syntax_context != SyntaxContext::empty() {
+            let id = (atom, syntax_context);
+            // Globals are marked with `unresolved_mark`.
+            if syntax_context.has_mark(self.syntax_metadata.unresolved_mark) {
+                self.variable_scopes
+                    .insert(id, self.module.expect("module span"));
+            } else {
+                // Use blocks to bound scope of borrows, and avoid multiple incompatible borrows.
+                let current_scope = { *self.scope_builder().current().span() };
+                if let Some(scope) = { self.variable_scopes.get(&id).map(Clone::clone) } {
+                    let effective_scope = {
+                        self.scope_builder()
+                            .common_ancestor(&current_scope, &scope)
+                            .expect("scopes have common ancestor")
+                    };
+
+                    self.variable_scopes.insert(id, effective_scope);
+                } else {
+                    self.variable_scopes.insert(id, current_scope);
                 }
             }
         }
@@ -794,8 +808,8 @@ impl Visit for ModuleAnalysisState {
         n.visit_children_with(self)
     }
     fn visit_module(&mut self, n: &SWCModule) {
+        self.module = Some(n.span);
         self.scope_builder = Some(ScopeBuilder::new(n));
-        // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
     fn visit_module_decl(&mut self, n: &ast::ModuleDecl) {

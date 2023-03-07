@@ -140,7 +140,7 @@ pub fn parse_module(
         ParseError(error.into_kind())
     })?;
 
-    Ok(GLOBALS.set(&Default::default(), || {
+    Ok({
         let hygiene_top_level_mark = Mark::new();
         let resolver_top_level_mark = Mark::new();
         let unresolved_mark = Mark::new();
@@ -163,7 +163,7 @@ pub fn parse_module(
                 unresolved_mark,
             },
         }
-    }))
+    })
 }
 
 fn default_handler(source_map: &Lrc<SourceMap>) -> Handler {
