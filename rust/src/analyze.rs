@@ -1,3 +1,5 @@
+use std::borrow::Borrow;
+use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 use std::path::Path;
 
@@ -16,6 +18,7 @@ use swc_common::collections::AHashMap;
 use swc_common::collections::AHashSet;
 use swc_common::errors::Handler;
 use swc_common::source_map::Span;
+use swc_common::Spanned;
 use swc_common::SyntaxContext;
 use swc_ecma_ast as ast;
 use swc_ecma_ast::Module as SWCModule;
@@ -27,7 +30,7 @@ use swc_ecma_visit::VisitWith;
 pub struct ModuleAnalysis {
     syntax_metadata: SyntaxMetadata,
     module_scope: Scope,
-    variable_uses_in_functions: AHashMap<ast::Id, Span>,
+    variable_scopes: AHashMap<ast::Id, Span>,
 }
 
 pub fn analyze_file<P: AsRef<Path>>(
@@ -78,9 +81,69 @@ fn analyze_module(module: &Module) -> Result<ModuleAnalysis> {
     state.into()
 }
 
+fn expr_span(expr: &ast::Expr) -> Span {
+    match expr {
+        ast::Expr::Array(e) => e.span,
+        ast::Expr::Arrow(e) => e.span,
+        ast::Expr::Assign(e) => e.span,
+        ast::Expr::Await(e) => e.span,
+        ast::Expr::Bin(e) => e.span,
+        ast::Expr::Call(e) => e.span,
+        ast::Expr::Class(e) => e.class.span,
+        ast::Expr::Cond(e) => e.span,
+        ast::Expr::Fn(e) => e.function.span,
+        ast::Expr::Ident(e) => e.span,
+        ast::Expr::Invalid(e) => e.span,
+        ast::Expr::JSXElement(e) => e.span,
+        ast::Expr::JSXEmpty(e) => e.span,
+        ast::Expr::JSXFragment(e) => e.span,
+        ast::Expr::JSXMember(e) => {
+            todo!("JSXMember syntax does not have a representative Span")
+        }
+        ast::Expr::JSXNamespacedName(e) => {
+            todo!("JSXNamespacedName syntax does not have a representative Span")
+        }
+        ast::Expr::Lit(ast::Lit::BigInt(e)) => e.span,
+        ast::Expr::Lit(ast::Lit::Bool(e)) => e.span,
+        ast::Expr::Lit(ast::Lit::JSXText(e)) => e.span,
+        ast::Expr::Lit(ast::Lit::Null(e)) => e.span,
+        ast::Expr::Lit(ast::Lit::Num(e)) => e.span,
+        ast::Expr::Lit(ast::Lit::Regex(e)) => e.span,
+        ast::Expr::Lit(ast::Lit::Str(e)) => e.span,
+        ast::Expr::Member(e) => e.span,
+        ast::Expr::MetaProp(e) => e.span,
+        ast::Expr::New(e) => e.span,
+        ast::Expr::Object(e) => e.span,
+        ast::Expr::OptChain(e) => e.span,
+        ast::Expr::Paren(e) => e.span,
+        ast::Expr::PrivateName(e) => e.span,
+        ast::Expr::Seq(e) => e.span,
+        ast::Expr::SuperProp(e) => e.span,
+        ast::Expr::TaggedTpl(e) => e.span,
+        ast::Expr::This(e) => e.span,
+        ast::Expr::Tpl(e) => e.span,
+        ast::Expr::TsAs(e) => e.span,
+        ast::Expr::TsConstAssertion(e) => e.span,
+        ast::Expr::TsInstantiation(e) => e.span,
+        ast::Expr::TsNonNull(e) => e.span,
+        ast::Expr::TsSatisfies(e) => e.span,
+        ast::Expr::TsTypeAssertion(e) => e.span,
+        ast::Expr::Unary(e) => e.span,
+        ast::Expr::Update(e) => e.span,
+        ast::Expr::Yield(e) => e.span,
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum BlockStmtOrExpr {
+    BlockStmt(Span),
+    Expr(Span),
+}
+
 #[derive(Debug, Eq, PartialEq)]
 enum KindedScope {
     Module(Span),
+    ArrowFunction(BlockStmtOrExpr),
     Function(Span),
     Block(Span),
     With(Span),
@@ -89,6 +152,17 @@ enum KindedScope {
 impl From<&SWCModule> for KindedScope {
     fn from(module: &SWCModule) -> Self {
         Self::Module(module.span)
+    }
+}
+
+impl From<&ast::ArrowExpr> for KindedScope {
+    fn from(arrow_function: &ast::ArrowExpr) -> Self {
+        Self::ArrowFunction(match &arrow_function.body {
+            ast::BlockStmtOrExpr::BlockStmt(block_stmt) => {
+                BlockStmtOrExpr::BlockStmt(block_stmt.span)
+            }
+            ast::BlockStmtOrExpr::Expr(expr) => BlockStmtOrExpr::Expr(expr_span(&expr)),
+        })
     }
 }
 
@@ -121,6 +195,17 @@ impl Scope {
         Self {
             kinded,
             inner: vec![],
+        }
+    }
+
+    fn span(&self) -> &Span {
+        match &self.kinded {
+            KindedScope::ArrowFunction(BlockStmtOrExpr::BlockStmt(s)) => s,
+            KindedScope::ArrowFunction(BlockStmtOrExpr::Expr(s)) => s,
+            KindedScope::Block(s) => s,
+            KindedScope::Function(s) => s,
+            KindedScope::Module(s) => s,
+            KindedScope::With(s) => s,
         }
     }
 }
@@ -159,27 +244,53 @@ impl ScopeBuilder {
             .expect("scope builder stack contains a scope index");
     }
 
-    fn function_scope_id(&mut self) -> Span {
-        let mut scopes = vec![&self.top_scope];
+    fn current(&self) -> &Scope {
         let mut scope = &self.top_scope;
         for idx in self.stack.iter() {
-            scope = &scope.inner.get(*idx).expect("indexed scope");
-            scopes.push(scope);
+            scope = &scope.inner[*idx];
         }
-        while let Some(scope) = scopes.pop() {
-            match scope.kinded {
-                KindedScope::Function(id) => {
-                    return id;
-                }
-                _ => {}
+        scope
+    }
+
+    fn common_ancestor(&self, scope1: &Span, scope2: &Span) -> Option<Span> {
+        let mut ancestors1 = self.ancestors(scope1);
+        let mut ancestors2 = self.ancestors(scope2);
+
+        let mut common_ancestor = None;
+        while let (Some(ancestor1), Some(ancestor2)) = (ancestors1.pop(), ancestors2.pop()) {
+            if ancestor1 != ancestor2 {
+                return common_ancestor;
+            } else {
+                common_ancestor = Some(*ancestor1)
             }
         }
 
-        if let KindedScope::Module(id) = &self.top_scope.kinded {
-            return *id;
-        } else {
-            panic!("top scope of scope builder is not module scope");
+        None
+    }
+
+    fn ancestors<'a>(&'a self, span: &Span) -> Vec<&'a Span> {
+        match self.ancestors_recursive(span, &self.top_scope) {
+            Some(scopes) => scopes,
+            None => vec![],
         }
+    }
+
+    fn ancestors_recursive<'a>(&'a self, span: &Span, scope: &'a Scope) -> Option<Vec<&'a Span>> {
+        if scope.span() == span {
+            return Some(vec![scope.span()]);
+        }
+
+        for scope in scope.inner.iter() {
+            match self.ancestors_recursive(span, scope) {
+                Some(mut spans) => {
+                    spans.push(scope.span());
+                    return Some(spans);
+                }
+                None => {}
+            }
+        }
+
+        None
     }
 
     fn build(self) -> Scope {
@@ -192,7 +303,7 @@ impl ScopeBuilder {
 struct ModuleAnalysisState {
     syntax_metadata: SyntaxMetadata,
     scope_builder: Option<ScopeBuilder>,
-    variable_uses_in_functions: AHashMap<ast::Id, Span>,
+    variable_scopes: AHashMap<ast::Id, Span>,
     str_check: AHashSet<Constant>,
 }
 
@@ -201,7 +312,7 @@ impl ModuleAnalysisState {
         Self {
             syntax_metadata,
             scope_builder: None,
-            variable_uses_in_functions: Default::default(),
+            variable_scopes: Default::default(),
             str_check: Default::default(),
         }
     }
@@ -217,7 +328,7 @@ impl From<ModuleAnalysisState> for Result<ModuleAnalysis> {
         Ok(ModuleAnalysis {
             syntax_metadata: state.syntax_metadata,
             module_scope: scope_builder.build(),
-            variable_uses_in_functions: state.variable_uses_in_functions,
+            variable_scopes: state.variable_scopes,
         })
     }
 }
@@ -236,8 +347,9 @@ impl Visit for ModuleAnalysisState {
         n.visit_children_with(self)
     }
     fn visit_arrow_expr(&mut self, n: &ast::ArrowExpr) {
-        // TODO: Implement analysis visitor.
-        n.visit_children_with(self)
+        self.scope_builder().push(n);
+        n.visit_children_with(self);
+        self.scope_builder().pop();
     }
     fn visit_assign_expr(&mut self, n: &ast::AssignExpr) {
         // TODO: Implement analysis visitor.
@@ -292,8 +404,20 @@ impl Visit for ModuleAnalysisState {
         n.visit_children_with(self)
     }
     fn visit_block_stmt(&mut self, n: &ast::BlockStmt) {
-        // TODO: Implement analysis visitor.
-        n.visit_children_with(self)
+        match self.scope_builder().current() {
+            Scope {
+                kinded: KindedScope::ArrowFunction(BlockStmtOrExpr::BlockStmt(block_stmt)),
+                ..
+            } => {
+                assert_eq!(&n.span, block_stmt);
+                n.visit_children_with(self)
+            }
+            _ => {
+                self.scope_builder().push(n);
+                n.visit_children_with(self);
+                self.scope_builder().pop();
+            }
+        }
     }
     fn visit_block_stmt_or_expr(&mut self, n: &ast::BlockStmtOrExpr) {
         // TODO: Implement analysis visitor.
@@ -479,9 +603,21 @@ impl Visit for ModuleAnalysisState {
     fn visit_ident(&mut self, n: &ast::Ident) {
         let (atom, syntax_context) = n.to_id();
         if syntax_context != SyntaxContext::empty() {
-            let function_id = self.scope_builder().function_scope_id();
-            self.variable_uses_in_functions
-                .insert((atom, syntax_context), function_id);
+            let scope_builder = self.scope_builder();
+            let current_scope = scope_builder.current();
+
+            match self.variable_scopes.entry((atom, syntax_context)) {
+                Entry::Occupied(mut o) => {
+                    let scope = o.get();
+                    let effective_scope = scope_builder
+                        .common_ancestor(current_scope.span(), scope)
+                        .expect("scopes have common ancestor");
+                    o.insert(effective_scope);
+                }
+                Entry::Vacant(v) => {
+                    v.insert(*current_scope.span());
+                }
+            }
         }
         n.visit_children_with(self)
     }
@@ -860,7 +996,10 @@ impl Visit for ModuleAnalysisState {
             n.visit_with(self);
         });
     }
-    fn visit_opt_ts_type_param_instantiation(&mut self, n: Option<&Box<ast::TsTypeParamInstantiation>>) {
+    fn visit_opt_ts_type_param_instantiation(
+        &mut self,
+        n: Option<&Box<ast::TsTypeParamInstantiation>>,
+    ) {
         // TODO: Implement analysis visitor.
         n.map(|n| {
             n.visit_with(self);
