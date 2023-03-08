@@ -13,7 +13,6 @@ use swc_common::FileName;
 use swc_common::Mark;
 use swc_common::SourceFile;
 use swc_common::SourceMap;
-use swc_common::GLOBALS;
 use swc_ecma_ast::EsVersion;
 use swc_ecma_ast::Module as SWCModule;
 use swc_ecma_parser::error::SyntaxError;

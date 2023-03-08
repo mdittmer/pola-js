@@ -1,5 +1,3 @@
-use std::borrow::Borrow;
-use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 use std::path::Path;
 
@@ -18,8 +16,8 @@ use swc_common::collections::AHashMap;
 use swc_common::collections::AHashSet;
 use swc_common::errors::Handler;
 use swc_common::source_map::Span;
+use swc_common::Mark;
 use swc_common::SyntaxContext;
-use swc_common::GLOBALS;
 use swc_ecma_ast as ast;
 use swc_ecma_ast::Module as SWCModule;
 use swc_ecma_parser::Syntax;
@@ -29,8 +27,7 @@ use swc_ecma_visit::VisitWith;
 #[derive(Debug)]
 pub struct ModuleAnalysis {
     syntax_metadata: SyntaxMetadata,
-    module_scope: Scope,
-    variable_scopes: AHashMap<ast::Id, Span>,
+    scopes_and_variables: ScopesAndVariables,
 }
 
 pub fn analyze_file<P: AsRef<Path>>(
@@ -97,10 +94,10 @@ fn expr_span(expr: &ast::Expr) -> Span {
         ast::Expr::JSXElement(e) => e.span,
         ast::Expr::JSXEmpty(e) => e.span,
         ast::Expr::JSXFragment(e) => e.span,
-        ast::Expr::JSXMember(e) => {
+        ast::Expr::JSXMember(_e) => {
             todo!("JSXMember syntax does not have a representative Span")
         }
-        ast::Expr::JSXNamespacedName(e) => {
+        ast::Expr::JSXNamespacedName(_e) => {
             todo!("JSXNamespacedName syntax does not have a representative Span")
         }
         ast::Expr::Lit(ast::Lit::BigInt(e)) => e.span,
@@ -185,12 +182,12 @@ impl From<&ast::WithStmt> for KindedScope {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct Scope {
+struct NestedScope {
     kinded: KindedScope,
-    inner: Vec<Scope>,
+    inner: Vec<NestedScope>,
 }
 
-impl Scope {
+impl NestedScope {
     fn new(kinded: KindedScope) -> Self {
         Self {
             kinded,
@@ -211,14 +208,20 @@ impl Scope {
 }
 
 #[derive(Debug)]
+struct CommonAncestorScopes<'a> {
+    common_ancestors: Vec<&'a NestedScope>,
+    uncommon_ancestors: (Vec<&'a NestedScope>, Vec<&'a NestedScope>),
+}
+
+#[derive(Debug)]
 struct ScopeBuilder {
-    top_scope: Scope,
+    top_scope: NestedScope,
     stack: Vec<usize>,
 }
 
 impl ScopeBuilder {
     fn new(module: &SWCModule) -> Self {
-        let top_scope = Scope::new(module.into());
+        let top_scope = NestedScope::new(module.into());
         Self {
             top_scope,
             stack: vec![],
@@ -234,7 +237,7 @@ impl ScopeBuilder {
             scope = scope.inner.get_mut(*idx).expect("indexed scope");
         }
         let idx = scope.inner.len();
-        scope.inner.push(Scope::new(KindedScope::from(node)));
+        scope.inner.push(NestedScope::new(KindedScope::from(node)));
         self.stack.push(idx);
     }
 
@@ -244,7 +247,7 @@ impl ScopeBuilder {
             .expect("scope builder stack contains a scope index");
     }
 
-    fn current(&self) -> &Scope {
+    fn current(&self) -> &NestedScope {
         let mut scope = &self.top_scope;
         for idx in self.stack.iter() {
             scope = &scope.inner[*idx];
@@ -252,41 +255,47 @@ impl ScopeBuilder {
         scope
     }
 
-    fn common_ancestor(&self, scope1: &Span, scope2: &Span) -> Option<Span> {
+    fn common_ancestors<'a>(&'a self, scope1: &Span, scope2: &Span) -> CommonAncestorScopes<'a> {
         let mut ancestors1 = self.ancestors(scope1);
         let mut ancestors2 = self.ancestors(scope2);
 
-        println!("ancestors1: {:?}", ancestors1);
-        println!("ancestors2: {:?}", ancestors2);
-
-        let mut common_ancestor = None;
+        let mut common_ancestors = vec![];
+        let mut uncommon_ancestors = (vec![], vec![]);
         while let (Some(ancestor1), Some(ancestor2)) = (ancestors1.pop(), ancestors2.pop()) {
             if ancestor1 != ancestor2 {
-                return common_ancestor;
+                uncommon_ancestors.0.push(ancestor1);
+                uncommon_ancestors.1.push(ancestor2);
             } else {
-                common_ancestor = Some(*ancestor1)
+                common_ancestors.push(ancestor1);
             }
         }
 
-        common_ancestor
+        CommonAncestorScopes {
+            common_ancestors,
+            uncommon_ancestors,
+        }
     }
 
-    fn ancestors<'a>(&'a self, span: &Span) -> Vec<&'a Span> {
+    fn ancestors<'a>(&'a self, span: &Span) -> Vec<&'a NestedScope> {
         match self.ancestors_recursive(span, &self.top_scope) {
             Some(scopes) => scopes,
             None => vec![],
         }
     }
 
-    fn ancestors_recursive<'a>(&'a self, span: &Span, scope: &'a Scope) -> Option<Vec<&'a Span>> {
+    fn ancestors_recursive<'a>(
+        &'a self,
+        span: &Span,
+        scope: &'a NestedScope,
+    ) -> Option<Vec<&'a NestedScope>> {
         if scope.span() == span {
-            return Some(vec![scope.span()]);
+            return Some(vec![scope]);
         }
 
         for scope in scope.inner.iter() {
             match self.ancestors_recursive(span, scope) {
                 Some(mut spans) => {
-                    spans.push(scope.span());
+                    spans.push(scope);
                     return Some(spans);
                 }
                 None => {}
@@ -296,9 +305,118 @@ impl ScopeBuilder {
         None
     }
 
-    fn build(self) -> Scope {
+    fn build(self) -> NestedScope {
         assert!(self.stack.len() == 0);
         self.top_scope
+    }
+}
+
+#[derive(Debug)]
+struct ScopesAndVariables {
+    top_scope: NestedScope,
+    lexical_scopes: AHashMap<ast::Id, Span>,
+    dynamic_scopes: AHashMap<ast::Id, Vec<Span>>,
+}
+
+#[derive(Debug)]
+struct VariableBinder {
+    unresolved_mark: Mark,
+    module: Span,
+    scope_builder: ScopeBuilder,
+    lexical_scopes: AHashMap<ast::Id, Span>,
+    dynamic_scopes: AHashMap<ast::Id, Vec<Span>>,
+}
+
+impl VariableBinder {
+    fn new(unresolved_mark: Mark, module: &SWCModule) -> Self {
+        let scope_builder = ScopeBuilder::new(module);
+        Self {
+            unresolved_mark,
+            module: module.span,
+            scope_builder,
+            lexical_scopes: Default::default(),
+            dynamic_scopes: Default::default(),
+        }
+    }
+
+    fn visit_ident(&mut self, n: &ast::Ident) {
+        let (atom, syntax_context) = n.to_id();
+
+        // Contextless identifiers do not contain unqualified variable references.
+        // E.g., in `function a(b) { c.d; }` `a`, `b`, and `c` have a non-empty context, but `d`
+        // does not.
+        if syntax_context != SyntaxContext::empty() {
+            let id = (atom, syntax_context);
+            let current_scope_span = { *self.scope_builder.current().span() };
+            let dynamic_scopes = if syntax_context.has_mark(self.unresolved_mark) {
+                // Unbound varibles are marked with `unresolved_mark`. Use module span to identify
+                // lexical scope, and consider all of current scopes ancestors (including itself)
+                // as candidates for dynamic scopes.
+                self.lexical_scopes.insert(id.clone(), self.module.into());
+                self.scope_builder.ancestors(&current_scope_span)
+            } else {
+                // Variable is bound in some lexical scope in this module.
+                //
+                // Note: Use blocks to bound scope of borrows, and avoid multiple incompatible
+                // borrows.
+                if let Some(previous_scope_span) =
+                    { self.lexical_scopes.get(&id).map(Clone::clone) }
+                {
+                    // Variable was used in an already visited scope. Redefine its lexical scope
+                    // as the nearest common ancestor between the current scope and previously
+                    // bound lexical scope.
+                    let (new_scope_span, uncommon_current_scope_ancestors) = {
+                        let CommonAncestorScopes {
+                            mut common_ancestors,
+                            uncommon_ancestors: (uncommon_current_scope_ancestors, _),
+                        } = self
+                            .scope_builder
+                            .common_ancestors(&current_scope_span, &previous_scope_span);
+
+                        (
+                            *common_ancestors
+                                .pop()
+                                .expect("common ancestor betwen scopes in same module")
+                                .span(),
+                            uncommon_current_scope_ancestors,
+                        )
+                    };
+                    self.lexical_scopes.insert(id.clone(), new_scope_span);
+
+                    // Consider all scopes between (but not including) lexical scope and
+                    // (including) current scope as candidates for dynamic scopes.
+                    uncommon_current_scope_ancestors
+                } else {
+                    // Variable is not already bound to a lexical scope. Bind it to the current
+                    // scope. Consider all of current scope's ancestors (including itself) as
+                    // candidates for dynamic scopes.
+                    let ancestors = self.scope_builder.ancestors(&current_scope_span);
+                    self.lexical_scopes.insert(id.clone(), current_scope_span);
+                    ancestors
+                }
+            }
+            .into_iter()
+            .filter_map(|scope| match scope {
+                // Filter candidate dynamic scopes, retaining only `with (expr) { ... }` scopes.
+                NestedScope {
+                    kinded: KindedScope::With(with_span),
+                    ..
+                } => Some(*with_span),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+            if dynamic_scopes.len() > 0 {
+                self.dynamic_scopes.insert(id, dynamic_scopes);
+            }
+        }
+    }
+
+    fn build(self) -> ScopesAndVariables {
+        ScopesAndVariables {
+            top_scope: self.scope_builder.build(),
+            lexical_scopes: self.lexical_scopes,
+            dynamic_scopes: self.dynamic_scopes,
+        }
     }
 }
 
@@ -306,8 +424,7 @@ impl ScopeBuilder {
 struct ModuleAnalysisState {
     syntax_metadata: SyntaxMetadata,
     module: Option<Span>,
-    scope_builder: Option<ScopeBuilder>,
-    variable_scopes: AHashMap<ast::Id, Span>,
+    variable_binder: Option<VariableBinder>,
     str_check: AHashSet<Constant>,
 }
 
@@ -316,24 +433,26 @@ impl ModuleAnalysisState {
         Self {
             syntax_metadata,
             module: None,
-            scope_builder: None,
-            variable_scopes: Default::default(),
+            variable_binder: None,
             str_check: Default::default(),
         }
     }
 
+    fn variable_binder(&mut self) -> &mut VariableBinder {
+        self.variable_binder.as_mut().expect("variable binder")
+    }
+
     fn scope_builder(&mut self) -> &mut ScopeBuilder {
-        self.scope_builder.as_mut().expect("scope builder")
+        &mut self.variable_binder().scope_builder
     }
 }
 
 impl From<ModuleAnalysisState> for Result<ModuleAnalysis> {
     fn from(state: ModuleAnalysisState) -> Self {
-        let scope_builder = state.scope_builder.expect("scope builder");
+        let scopes_and_variables = state.variable_binder.expect("variable binder").build();
         Ok(ModuleAnalysis {
             syntax_metadata: state.syntax_metadata,
-            module_scope: scope_builder.build(),
-            variable_scopes: state.variable_scopes,
+            scopes_and_variables,
         })
     }
 }
@@ -410,7 +529,7 @@ impl Visit for ModuleAnalysisState {
     }
     fn visit_block_stmt(&mut self, n: &ast::BlockStmt) {
         match self.scope_builder().current() {
-            Scope {
+            NestedScope {
                 kinded: KindedScope::ArrowFunction(BlockStmtOrExpr::BlockStmt(block_stmt)),
                 ..
             } => {
@@ -606,33 +725,7 @@ impl Visit for ModuleAnalysisState {
         n.visit_children_with(self)
     }
     fn visit_ident(&mut self, n: &ast::Ident) {
-        let (atom, syntax_context) = n.to_id();
-
-        // Contextless identifiers do not contain unqualified variable references.
-        // E.g., in `function a(b) { c.d; }` `a`, `b`, and `c` have a non-empty context, but `d`
-        // does not.
-        if syntax_context != SyntaxContext::empty() {
-            let id = (atom, syntax_context);
-            // Globals are marked with `unresolved_mark`.
-            if syntax_context.has_mark(self.syntax_metadata.unresolved_mark) {
-                self.variable_scopes
-                    .insert(id, self.module.expect("module span"));
-            } else {
-                // Use blocks to bound scope of borrows, and avoid multiple incompatible borrows.
-                let current_scope = { *self.scope_builder().current().span() };
-                if let Some(scope) = { self.variable_scopes.get(&id).map(Clone::clone) } {
-                    let effective_scope = {
-                        self.scope_builder()
-                            .common_ancestor(&current_scope, &scope)
-                            .expect("scopes have common ancestor")
-                    };
-
-                    self.variable_scopes.insert(id, effective_scope);
-                } else {
-                    self.variable_scopes.insert(id, current_scope);
-                }
-            }
-        }
+        self.variable_binder().visit_ident(n);
         n.visit_children_with(self)
     }
     fn visit_if_stmt(&mut self, n: &ast::IfStmt) {
@@ -809,7 +902,7 @@ impl Visit for ModuleAnalysisState {
     }
     fn visit_module(&mut self, n: &SWCModule) {
         self.module = Some(n.span);
-        self.scope_builder = Some(ScopeBuilder::new(n));
+        self.variable_binder = Some(VariableBinder::new(self.syntax_metadata.unresolved_mark, n));
         n.visit_children_with(self)
     }
     fn visit_module_decl(&mut self, n: &ast::ModuleDecl) {
@@ -1575,8 +1668,9 @@ impl Visit for ModuleAnalysisState {
         n.visit_children_with(self)
     }
     fn visit_with_stmt(&mut self, n: &ast::WithStmt) {
+        n.obj.visit_with(self);
         self.scope_builder().push(n);
-        n.visit_children_with(self);
+        n.body.visit_with(self);
         self.scope_builder().pop();
     }
     fn visit_yield_expr(&mut self, n: &ast::YieldExpr) {
