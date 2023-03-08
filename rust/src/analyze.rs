@@ -1,11 +1,6 @@
 use std::fmt::Debug;
-use std::path::Path;
 
 use crate::heap::Constant;
-use crate::parse::parse_file;
-use crate::parse::parse_file_with_handler;
-use crate::parse::parse_str;
-use crate::parse::parse_str_with_handler;
 use crate::parse::Module;
 use crate::parse::SyntaxMetadata;
 use color_eyre::Result;
@@ -14,68 +9,26 @@ use swc_atoms::Atom;
 use swc_atoms::JsWord;
 use swc_common::collections::AHashMap;
 use swc_common::collections::AHashSet;
-use swc_common::errors::Handler;
 use swc_common::source_map as sm;
 use swc_common::Mark;
 use swc_common::SyntaxContext;
 use swc_ecma_ast as ast;
 use swc_ecma_ast::Module as SWCModule;
-use swc_ecma_parser::Syntax;
 use swc_ecma_visit::Visit;
 use swc_ecma_visit::VisitWith;
 
-trait Span: Clone + Copy + Debug {}
+pub trait Span: Clone + Copy + Debug {}
 
 impl<S: Clone + Copy + Debug> Span for S {}
 
 #[derive(Debug)]
 pub struct ModuleAnalysis {
-    syntax_metadata: SyntaxMetadata,
-    scopes_and_variables: ScopesAndVariables<sm::Span>,
-}
-
-pub fn analyze_file<P: AsRef<Path>>(
-    source_path: P,
-    syntax: Syntax,
-    target: ast::EsVersion,
-) -> Result<ModuleAnalysis> {
-    let module = parse_file(source_path, syntax, target)?;
-    analyze_module(&module)
-}
-
-pub fn analyze_file_with_handler<P: AsRef<Path>>(
-    source_path: P,
-    syntax: Syntax,
-    target: ast::EsVersion,
-    handler: Handler,
-) -> Result<ModuleAnalysis> {
-    let module = parse_file_with_handler(source_path, syntax, target, handler)?;
-    analyze_module(&module)
-}
-
-pub fn analyze_str(
-    source_str: &str,
-    source_path: &str,
-    syntax: Syntax,
-    target: ast::EsVersion,
-) -> Result<ModuleAnalysis> {
-    let module = parse_str(source_str, source_path, syntax, target)?;
-    analyze_module(&module)
-}
-
-pub fn analyze_str_with_handler(
-    source_str: &str,
-    source_path: &str,
-    syntax: Syntax,
-    target: ast::EsVersion,
-    handler: Handler,
-) -> Result<ModuleAnalysis> {
-    let module = parse_str_with_handler(source_str, source_path, syntax, target, handler)?;
-    analyze_module(&module)
+    pub syntax_metadata: SyntaxMetadata,
+    pub scopes_and_variables: ScopesAndVariables<sm::Span>,
 }
 
 #[tracing::instrument(skip(module))]
-fn analyze_module(module: &Module) -> Result<ModuleAnalysis> {
+pub fn analyze_module(module: &Module) -> Result<ModuleAnalysis> {
     let mut state = ModuleAnalysisState::new(module.syntax_metadata.clone());
     module.swc_module.visit_with(&mut state);
 
@@ -136,31 +89,18 @@ fn ast_expr_span(expr: &ast::Expr) -> sm::Span {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum BlockStmtOrExpr<S: Span> {
+pub enum BlockStmtOrExpr<S: Span> {
     BlockStmt(S),
     Expr(S),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum Scope<S: Span> {
+pub enum Scope<S: Span> {
     Module(S),
     ArrowFunction(BlockStmtOrExpr<S>),
     Function(S),
     Block(S),
     With(S),
-}
-
-impl<S: Span> Scope<S> {
-    fn span(&self) -> &S {
-        match self {
-            Scope::ArrowFunction(BlockStmtOrExpr::BlockStmt(s)) => s,
-            Scope::ArrowFunction(BlockStmtOrExpr::Expr(s)) => s,
-            Scope::Block(s) => s,
-            Scope::Function(s) => s,
-            Scope::Module(s) => s,
-            Scope::With(s) => s,
-        }
-    }
 }
 
 impl From<&SWCModule> for Scope<sm::Span> {
@@ -199,7 +139,7 @@ impl From<&ast::WithStmt> for Scope<sm::Span> {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct NestedScope<S: Span> {
+pub struct NestedScope<S: Span> {
     scope: Scope<S>,
     inner: Vec<NestedScope<S>>,
 }
@@ -210,10 +150,6 @@ impl<S: Span> NestedScope<S> {
             scope,
             inner: vec![],
         }
-    }
-
-    fn span(&self) -> &S {
-        self.scope.span()
     }
 }
 
@@ -326,10 +262,10 @@ impl ScopeBuilder {
 }
 
 #[derive(Debug)]
-struct ScopesAndVariables<S: Span> {
-    top_scope: NestedScope<S>,
-    lexical_scopes: AHashMap<ast::Id, Scope<S>>,
-    dynamic_scopes: AHashMap<ast::Id, Vec<Scope<S>>>,
+pub struct ScopesAndVariables<S: Span> {
+    pub top_scope: NestedScope<S>,
+    pub lexical_scopes: AHashMap<ast::Id, Scope<S>>,
+    pub dynamic_scopes: AHashMap<ast::Id, Vec<Scope<S>>>,
 }
 
 #[derive(Debug)]
