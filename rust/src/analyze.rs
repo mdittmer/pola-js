@@ -300,17 +300,17 @@ impl ScopeBuilder {
     fn ancestors_recursive<'a>(
         &'a self,
         scope: &Scope<sm::Span>,
-        top_scope: &'a NestedScope<sm::Span>,
+        nested_scope: &'a NestedScope<sm::Span>,
     ) -> Option<Vec<&'a Scope<sm::Span>>> {
-        if &top_scope.scope == scope {
-            return Some(vec![&top_scope.scope]);
+        if &nested_scope.scope == scope {
+            return Some(vec![&nested_scope.scope]);
         }
 
-        for scope in top_scope.inner.iter() {
-            match self.ancestors_recursive(&scope.scope, top_scope) {
-                Some(mut spans) => {
-                    spans.push(&scope.scope);
-                    return Some(spans);
+        for inner_scope in nested_scope.inner.iter() {
+            match self.ancestors_recursive(&scope, inner_scope) {
+                Some(mut scopes) => {
+                    scopes.push(&nested_scope.scope);
+                    return Some(scopes);
                 }
                 None => {}
             }
