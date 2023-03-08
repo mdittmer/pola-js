@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 
 use crate::heap::Constant;
@@ -96,11 +97,12 @@ pub enum BlockStmtOrExpr<S: Span> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Scope<S: Span> {
+    External,
     Module(S),
     ArrowFunction(BlockStmtOrExpr<S>),
-    Function(S),
+    Function { function: S, block: Option<S> },
     Block(S),
-    With(S),
+    With { with: S, block: Option<S> },
 }
 
 impl From<&SWCModule> for Scope<sm::Span> {
@@ -122,7 +124,10 @@ impl From<&ast::ArrowExpr> for Scope<sm::Span> {
 
 impl From<&ast::Function> for Scope<sm::Span> {
     fn from(function: &ast::Function) -> Self {
-        Self::Function(function.span)
+        Self::Function {
+            function: function.span,
+            block: function.body.as_ref().map(|block| block.span),
+        }
     }
 }
 
@@ -134,7 +139,16 @@ impl From<&ast::BlockStmt> for Scope<sm::Span> {
 
 impl From<&ast::WithStmt> for Scope<sm::Span> {
     fn from(with: &ast::WithStmt) -> Self {
-        Self::With(with.span)
+        match with.body.as_ref() {
+            ast::Stmt::Block(block) => Self::With {
+                with: with.span,
+                block: Some(block.span),
+            },
+            _ => Self::With {
+                with: with.span,
+                block: None,
+            },
+        }
     }
 }
 
@@ -166,10 +180,9 @@ struct ScopeBuilder {
 }
 
 impl ScopeBuilder {
-    fn new(module: &SWCModule) -> Self {
-        let top_scope = NestedScope::new(module.into());
+    fn new() -> Self {
         Self {
-            top_scope,
+            top_scope: NestedScope::new(Scope::External),
             stack: vec![],
         }
     }
@@ -206,17 +219,30 @@ impl ScopeBuilder {
         scope1: &Scope<sm::Span>,
         scope2: &Scope<sm::Span>,
     ) -> CommonAncestorScopes<'a> {
-        let mut ancestors1 = self.ancestors(scope1);
-        let mut ancestors2 = self.ancestors(scope2);
+        let mut ancestors1 = self.ancestors_reversed(scope1);
+        let mut ancestors2 = self.ancestors_reversed(scope2);
 
         let mut common_ancestors = vec![];
         let mut uncommon_ancestors = (vec![], vec![]);
-        while let (Some(ancestor1), Some(ancestor2)) = (ancestors1.pop(), ancestors2.pop()) {
-            if ancestor1 != ancestor2 {
-                uncommon_ancestors.0.push(ancestor1);
-                uncommon_ancestors.1.push(ancestor2);
-            } else {
-                common_ancestors.push(ancestor1);
+        loop {
+            match (ancestors1.pop(), ancestors2.pop()) {
+                (Some(ancestor1), Some(ancestor2)) => {
+                    if ancestor1 != ancestor2 {
+                        uncommon_ancestors.0.push(ancestor1);
+                        uncommon_ancestors.1.push(ancestor2);
+                    } else {
+                        common_ancestors.push(ancestor1);
+                    }
+                }
+                (Some(ancestor1), None) => {
+                    uncommon_ancestors.0.push(ancestor1);
+                }
+                (None, Some(ancestor2)) => {
+                    uncommon_ancestors.1.push(ancestor2);
+                }
+                (None, None) => {
+                    break;
+                }
             }
         }
 
@@ -227,6 +253,12 @@ impl ScopeBuilder {
     }
 
     fn ancestors<'a>(&'a self, scope: &Scope<sm::Span>) -> Vec<&'a Scope<sm::Span>> {
+        let mut ancestors_reversed = self.ancestors_reversed(scope);
+        ancestors_reversed.reverse();
+        ancestors_reversed
+    }
+
+    fn ancestors_reversed<'a>(&'a self, scope: &Scope<sm::Span>) -> Vec<&'a Scope<sm::Span>> {
         match self.ancestors_recursive(scope, &self.top_scope) {
             Some(scopes) => scopes,
             None => vec![],
@@ -271,18 +303,18 @@ pub struct ScopesAndVariables<S: Span> {
 #[derive(Debug)]
 struct VariableBinder {
     unresolved_mark: Mark,
-    module_scope: Scope<sm::Span>,
+    external_scope: Scope<sm::Span>,
     scope_builder: ScopeBuilder,
     lexical_scopes: AHashMap<ast::Id, Scope<sm::Span>>,
     dynamic_scopes: AHashMap<ast::Id, Vec<Scope<sm::Span>>>,
 }
 
 impl VariableBinder {
-    fn new(unresolved_mark: Mark, module: &SWCModule) -> Self {
-        let scope_builder = ScopeBuilder::new(module);
+    fn new(unresolved_mark: Mark) -> Self {
+        let scope_builder = ScopeBuilder::new();
         Self {
             unresolved_mark,
-            module_scope: module.into(),
+            external_scope: scope_builder.top_scope.scope.clone(),
             scope_builder,
             lexical_scopes: Default::default(),
             dynamic_scopes: Default::default(),
@@ -303,7 +335,8 @@ impl VariableBinder {
                 // lexical scope, and consider all of current scopes ancestors (including itself)
                 // as candidates for dynamic scopes.
                 self.lexical_scopes
-                    .insert(id.clone(), self.module_scope.clone());
+                    .insert(id.clone(), self.external_scope.clone());
+                println!("A");
                 self.scope_builder.ancestors(&current_scope)
             } else {
                 // Variable is bound in some lexical scope in this module.
@@ -341,18 +374,30 @@ impl VariableBinder {
                     // candidates for dynamic scopes.
                     let ancestors = self.scope_builder.ancestors(&current_scope);
                     self.lexical_scopes.insert(id.clone(), current_scope);
+                    println!("C");
                     ancestors
                 }
             }
             .into_iter()
             .filter_map(|scope| match scope {
                 // Filter candidate dynamic scopes, retaining only `with (expr) { ... }` scopes.
-                with_scope @ Scope::With(_) => Some(with_scope.clone()),
+                with_scope @ Scope::With { .. } => Some(with_scope.clone()),
                 _ => None,
             })
             .collect::<Vec<_>>();
             if dynamic_scopes.len() > 0 {
-                self.dynamic_scopes.insert(id, dynamic_scopes);
+                if &*id.0 == "a" {
+                    println!("Found dynamic scopes: {:?}", dynamic_scopes);
+                }
+
+                match self.dynamic_scopes.entry(id) {
+                    Entry::Vacant(entry) => {
+                        entry.insert(dynamic_scopes);
+                    }
+                    Entry::Occupied(mut entry) => {
+                        entry.get_mut().extend(dynamic_scopes.into_iter());
+                    }
+                }
             }
         }
     }
@@ -369,23 +414,21 @@ impl VariableBinder {
 #[derive(Debug)]
 struct ModuleAnalysisState {
     syntax_metadata: SyntaxMetadata,
-    module: Option<sm::Span>,
-    variable_binder: Option<VariableBinder>,
+    variable_binder: VariableBinder,
     str_check: AHashSet<Constant>,
 }
 
 impl ModuleAnalysisState {
     fn new(syntax_metadata: SyntaxMetadata) -> Self {
         Self {
+            variable_binder: VariableBinder::new(syntax_metadata.unresolved_mark.clone()),
             syntax_metadata,
-            module: None,
-            variable_binder: None,
             str_check: Default::default(),
         }
     }
 
     fn variable_binder(&mut self) -> &mut VariableBinder {
-        self.variable_binder.as_mut().expect("variable binder")
+        &mut self.variable_binder
     }
 
     fn scope_builder(&mut self) -> &mut ScopeBuilder {
@@ -395,7 +438,7 @@ impl ModuleAnalysisState {
 
 impl From<ModuleAnalysisState> for Result<ModuleAnalysis> {
     fn from(state: ModuleAnalysisState) -> Self {
-        let scopes_and_variables = state.variable_binder.expect("variable binder").build();
+        let scopes_and_variables = state.variable_binder.build();
         Ok(ModuleAnalysis {
             syntax_metadata: state.syntax_metadata,
             scopes_and_variables,
@@ -474,13 +517,41 @@ impl Visit for ModuleAnalysisState {
         n.visit_children_with(self)
     }
     fn visit_block_stmt(&mut self, n: &ast::BlockStmt) {
-        match self.scope_builder().current() {
-            NestedScope {
-                scope: Scope::ArrowFunction(BlockStmtOrExpr::BlockStmt(block_stmt)),
-                ..
+        match self.scope_builder().current().scope {
+            Scope::ArrowFunction(BlockStmtOrExpr::BlockStmt(block_stmt)) => {
+                if n.span == block_stmt {
+                    // No extra block scope for `(...) => { ... }`, just ArrowFunction scope.
+                    n.visit_children_with(self)
+                } else {
+                    self.scope_builder().push(n);
+                    n.visit_children_with(self);
+                    self.scope_builder().pop();
+                }
+            }
+            Scope::Function {
+                block: Some(block), ..
             } => {
-                assert_eq!(&n.span, block_stmt);
-                n.visit_children_with(self)
+                if n.span == block {
+                    // No extra block scope for `function (...) { ... }`, just Function
+                    // scope.
+                    n.visit_children_with(self);
+                } else {
+                    self.scope_builder().push(n);
+                    n.visit_children_with(self);
+                    self.scope_builder().pop();
+                }
+            }
+            Scope::With {
+                block: Some(block), ..
+            } => {
+                if n.span == block {
+                    // No extra block scope for `with (...) { ... }`, just With scope.
+                    n.visit_children_with(self);
+                } else {
+                    self.scope_builder().push(n);
+                    n.visit_children_with(self);
+                    self.scope_builder().pop();
+                }
             }
             _ => {
                 self.scope_builder().push(n);
@@ -671,7 +742,7 @@ impl Visit for ModuleAnalysisState {
         n.visit_children_with(self)
     }
     fn visit_ident(&mut self, n: &ast::Ident) {
-        self.variable_binder().visit_ident(n);
+        self.variable_binder.visit_ident(n);
         n.visit_children_with(self)
     }
     fn visit_if_stmt(&mut self, n: &ast::IfStmt) {
@@ -847,9 +918,9 @@ impl Visit for ModuleAnalysisState {
         n.visit_children_with(self)
     }
     fn visit_module(&mut self, n: &SWCModule) {
-        self.module = Some(n.span);
-        self.variable_binder = Some(VariableBinder::new(self.syntax_metadata.unresolved_mark, n));
-        n.visit_children_with(self)
+        self.variable_binder.scope_builder.push(n);
+        n.visit_children_with(self);
+        self.variable_binder.scope_builder.pop();
     }
     fn visit_module_decl(&mut self, n: &ast::ModuleDecl) {
         // TODO: Implement analysis visitor.
@@ -1631,11 +1702,29 @@ pub mod test {
     use super::Span;
 
     impl<S: Span> Scope<S> {
+        pub fn assert_external(&self) {
+            match self {
+                Self::External => {}
+                _ => {
+                    panic!("expected external scope");
+                }
+            }
+        }
+
         pub fn assert_module(&self) {
             match self {
                 Self::Module(_) => {}
                 _ => {
                     panic!("expected module scope");
+                }
+            }
+        }
+
+        pub fn assert_function(&self) {
+            match self {
+                Self::Function { .. } => {}
+                _ => {
+                    panic!("expected function scope");
                 }
             }
         }
@@ -1668,8 +1757,11 @@ mod tests {
         let source_str = "a;";
         let module_analysis = analyze_source_str(source_str).expect("module analysis");
         let top_scope = &module_analysis.scopes_and_variables.top_scope;
-        top_scope.scope.assert_module();
-        assert_eq!(0, top_scope.inner.len());
+        top_scope.scope.assert_external();
+        assert_eq!(1, top_scope.inner.len());
+        let module_scope = top_scope.inner.iter().next().expect("module scope");
+        module_scope.scope.assert_module();
+        assert_eq!(0, module_scope.inner.len());
         let scopes_and_variables = &module_analysis.scopes_and_variables;
         assert_eq!(1, scopes_and_variables.lexical_scopes.len());
         assert_eq!(0, scopes_and_variables.dynamic_scopes.len());
@@ -1681,4 +1773,204 @@ mod tests {
         assert_eq!(&*a, "a");
         assert_eq!(a_scope, &top_scope.scope);
     }
+
+    #[test]
+    fn test_hoisted_var() {
+        let source_str = "(function() { a; })(); var a;";
+        let module_analysis = analyze_source_str(source_str).expect("module analysis");
+        let top_scope = &module_analysis.scopes_and_variables.top_scope;
+        top_scope.scope.assert_external();
+        assert_eq!(1, top_scope.inner.len());
+        let module_scope = top_scope.inner.iter().next().expect("module scope");
+        module_scope.scope.assert_module();
+        assert_eq!(1, module_scope.inner.len());
+        let function_scope = module_scope.inner.iter().next().expect("function scope");
+        function_scope.scope.assert_function();
+        assert_eq!(0, function_scope.inner.len());
+        let scopes_and_variables = &module_analysis.scopes_and_variables;
+        assert_eq!(1, scopes_and_variables.lexical_scopes.len());
+        assert_eq!(0, scopes_and_variables.dynamic_scopes.len());
+        let ((a, _), a_scope) = scopes_and_variables
+            .lexical_scopes
+            .iter()
+            .next()
+            .expect("variable and scope");
+        assert_eq!(&*a, "a");
+        assert_eq!(a_scope, &module_scope.scope);
+    }
+
+    #[test]
+    fn test_hoisted_function() {
+        let source_str = "(function() { a; })(); function a () {}";
+        let module_analysis = analyze_source_str(source_str).expect("module analysis");
+        let top_scope = &module_analysis.scopes_and_variables.top_scope;
+        top_scope.scope.assert_external();
+        assert_eq!(1, top_scope.inner.len());
+        let module_scope = top_scope.inner.iter().next().expect("module scope");
+        module_scope.scope.assert_module();
+        assert_eq!(2, module_scope.inner.len());
+        let mut functions_iter = module_scope.inner.iter();
+        let function_scope = functions_iter.next().expect("function scope");
+        function_scope.scope.assert_function();
+        assert_eq!(0, function_scope.inner.len());
+        let function_scope = functions_iter.next().expect("function scope");
+        function_scope.scope.assert_function();
+        assert_eq!(0, function_scope.inner.len());
+        let scopes_and_variables = &module_analysis.scopes_and_variables;
+        assert_eq!(1, scopes_and_variables.lexical_scopes.len());
+        assert_eq!(0, scopes_and_variables.dynamic_scopes.len());
+        let ((a, _), a_scope) = scopes_and_variables
+            .lexical_scopes
+            .iter()
+            .next()
+            .expect("variable and scope");
+        assert_eq!(&*a, "a");
+        assert_eq!(a_scope, &module_scope.scope);
+    }
+
+    #[test]
+    fn test_mutli_with1() {
+        let source_str = r#"
+        (function() {
+            with (_) {
+                (() => {
+                    {
+                        with (_) {
+                            (function() {
+                                {
+                                    a;
+                                }
+                            })();
+                        }
+                    }
+                })();
+            }
+
+            var a;
+
+            with (_) {
+                (function() {
+                    {
+                        (() => a)();
+                    }
+                })();
+            }
+        })();
+        "#;
+        let module_analysis = analyze_source_str(source_str).expect("module analysis");
+        let a_lexical_scope = &module_analysis
+            .scopes_and_variables
+            .top_scope // External
+            .inner[0] // Module
+            .inner[0]; // function() { ... var a; ... }
+        let with1 = &a_lexical_scope.inner[0];
+        let with2 = &with1.inner[0] // () => { ... }
+            .inner[0] // { ... } between () => { ... } and second with (_) { ... }
+            .inner[0];
+        let with3 = &a_lexical_scope.inner[1];
+        let scopes_and_variables = &module_analysis.scopes_and_variables;
+        assert_eq!(2, scopes_and_variables.lexical_scopes.len()); // `a` and unresolved `_`.
+        assert_eq!(2, scopes_and_variables.dynamic_scopes.len()); // `a` and second `_`.
+
+        for ((atom, _), lexical_scope) in scopes_and_variables.lexical_scopes.iter() {
+            if &*atom == "_" {
+                lexical_scope.assert_external();
+            } else if &*atom == "a" {
+                assert_eq!(&a_lexical_scope.scope, lexical_scope);
+            } else {
+                panic!("unexpected name");
+            }
+        }
+
+        for ((atom, _), dynamic_scopes) in scopes_and_variables.dynamic_scopes.iter() {
+            if &*atom == "_" {
+                assert_eq!(&vec![with1.scope.clone()], dynamic_scopes);
+            } else if &*atom == "a" {
+                assert_eq!(
+                    &vec![
+                        with1.scope.clone(),
+                        with2.scope.clone(),
+                        with3.scope.clone(),
+                    ],
+                    dynamic_scopes
+                );
+            } else {
+                panic!("unexpected name");
+            }
+        }
+    }
+
+    #[test]
+    fn test_mutli_with2() {
+        let source_str = r#"
+        (function() {
+            with (_) {
+                (function() {
+                    {
+                        (() => a)();
+                    }
+                })();
+            }
+
+            var a;
+
+            with (_) {
+                (() => {
+                    {
+                        with (_) {
+                            (function() {
+                                {
+                                    a;
+                                }
+                            })();
+                        }
+                    }
+                })();
+            }
+        })();
+        "#;
+        let module_analysis = analyze_source_str(source_str).expect("module analysis");
+        let a_lexical_scope = &module_analysis
+            .scopes_and_variables
+            .top_scope // External
+            .inner[0] // Module
+            .inner[0]; // function() { ... var a; ... }
+        let with1 = &a_lexical_scope.inner[0];
+        let with2 = &a_lexical_scope.inner[1];
+        let with3 = &with2.inner[0] // () => { ... }
+            .inner[0] // { ... } between () => { ... } and second with (_) { ... }
+            .inner[0];
+        let scopes_and_variables = &module_analysis.scopes_and_variables;
+        assert_eq!(2, scopes_and_variables.lexical_scopes.len()); // `a` and unresolved `_`.
+        assert_eq!(2, scopes_and_variables.dynamic_scopes.len()); // `a` and second `_`.
+
+        for ((atom, _), lexical_scope) in scopes_and_variables.lexical_scopes.iter() {
+            if &*atom == "_" {
+                lexical_scope.assert_external();
+            } else if &*atom == "a" {
+                assert_eq!(&a_lexical_scope.scope, lexical_scope);
+            } else {
+                panic!("unexpected name");
+            }
+        }
+
+        for ((atom, _), dynamic_scopes) in scopes_and_variables.dynamic_scopes.iter() {
+            if &*atom == "_" {
+                assert_eq!(&vec![with2.scope.clone()], dynamic_scopes);
+            } else if &*atom == "a" {
+                assert_eq!(
+                    &vec![
+                        with1.scope.clone(),
+                        with2.scope.clone(),
+                        with3.scope.clone(),
+                    ],
+                    dynamic_scopes
+                );
+            } else {
+                panic!("unexpected name");
+            }
+        }
+    }
+
+    // TODO: Test complex dynamic scopes once more: variable comes from External.
 }

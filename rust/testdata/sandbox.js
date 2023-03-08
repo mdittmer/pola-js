@@ -1,9 +1,15 @@
-'use strict';
+function x() {
+  let z = {y: () => console.log('Hello dynamic')};
 
-x;
+  with (z) {
+    y();
+  }
 
-try {
-  throw new Error();
-} catch (x) {
-  // var x;
+  function y() {
+    console.log('Hello world');
+  }
+
+
 }
+
+x();
