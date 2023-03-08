@@ -186,6 +186,7 @@ mod tests {
     use super::parse_file;
     use super::parse_str;
     use color_eyre::Result;
+    use swc_common::GLOBALS;
     use swc_ecma_parser::Syntax;
 
     /// Path to sandbox testdata, realtive to test runner path.
@@ -196,17 +197,19 @@ mod tests {
 
     #[test]
     fn test_sandbox_ts() -> Result<()> {
-        parse_str(
-            SANDBOX_TS_STR,
-            SANDBOX_TS_PATH,
-            Syntax::Typescript(Default::default()),
-            Default::default(),
-        )?;
-        parse_file(
-            SANDBOX_TS_PATH,
-            Syntax::Typescript(Default::default()),
-            Default::default(),
-        )?;
+        GLOBALS.set(&Default::default(), || -> Result<_, _> {
+            parse_str(
+                SANDBOX_TS_STR,
+                SANDBOX_TS_PATH,
+                Syntax::Typescript(Default::default()),
+                Default::default(),
+            )?;
+            parse_file(
+                SANDBOX_TS_PATH,
+                Syntax::Typescript(Default::default()),
+                Default::default(),
+            )
+        })?;
         Ok(())
     }
 }

@@ -140,8 +140,8 @@ impl From<&ast::WithStmt> for Scope<sm::Span> {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct NestedScope<S: Span> {
-    scope: Scope<S>,
-    inner: Vec<NestedScope<S>>,
+    pub scope: Scope<S>,
+    pub inner: Vec<NestedScope<S>>,
 }
 
 impl<S: Span> NestedScope<S> {
@@ -1622,5 +1622,63 @@ impl Visit for ModuleAnalysisState {
     fn visit_yield_expr(&mut self, n: &ast::YieldExpr) {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::Scope;
+    use super::Span;
+
+    impl<S: Span> Scope<S> {
+        pub fn assert_module(&self) {
+            match self {
+                Self::Module(_) => {}
+                _ => {
+                    panic!("expected module scope");
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::analyze_module;
+    use super::ModuleAnalysis;
+    use crate::parse::parse_str;
+    use color_eyre::Result;
+    use swc_common::GLOBALS;
+    use swc_ecma_parser::Syntax;
+
+    fn analyze_source_str(source_str: &str) -> Result<ModuleAnalysis> {
+        GLOBALS.set(&Default::default(), || -> Result<ModuleAnalysis> {
+            let module = parse_str(
+                source_str,
+                "test.ts",
+                Syntax::Typescript(Default::default()),
+                Default::default(),
+            )?;
+            analyze_module(&module)
+        })
+    }
+
+    #[test]
+    fn test_unbound() {
+        let source_str = "a;";
+        let module_analysis = analyze_source_str(source_str).expect("module analysis");
+        let top_scope = &module_analysis.scopes_and_variables.top_scope;
+        top_scope.scope.assert_module();
+        assert_eq!(0, top_scope.inner.len());
+        let scopes_and_variables = &module_analysis.scopes_and_variables;
+        assert_eq!(1, scopes_and_variables.lexical_scopes.len());
+        assert_eq!(0, scopes_and_variables.dynamic_scopes.len());
+        let ((a, _), a_scope) = scopes_and_variables
+            .lexical_scopes
+            .iter()
+            .next()
+            .expect("variable and scope");
+        assert_eq!(&*a, "a");
+        assert_eq!(a_scope, &top_scope.scope);
     }
 }
