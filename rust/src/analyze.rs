@@ -1733,23 +1733,66 @@ pub mod test {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::hash_map::Entry;
+
     use super::analyze_module;
     use super::ModuleAnalysis;
     use crate::parse::parse_str;
     use color_eyre::Result;
+    use swc_common::collections::AHashMap;
     use swc_common::GLOBALS;
+    use swc_ecma_ast as ast;
+    use swc_ecma_ast::Module as SWCModule;
     use swc_ecma_parser::Syntax;
+    use swc_ecma_visit::Visit;
+
+    struct IdCounter {
+        counts: AHashMap<ast::Id, u32>,
+    }
+
+    impl Visit for IdCounter {
+        fn visit_ident(&mut self, n: &ast::Ident) {
+            let id = n.to_id();
+            match self.counts.entry(id) {
+                Entry::Vacant(entry) => {
+                    entry.insert(1);
+                }
+                Entry::Occupied(mut entry) => {
+                    let count = { entry.get() } + 1;
+                    entry.insert(count);
+                }
+            }
+        }
+    }
+
+    fn noop<'a, I>(_: &'a I) {}
 
     fn analyze_source_str(source_str: &str) -> Result<ModuleAnalysis> {
-        GLOBALS.set(&Default::default(), || -> Result<ModuleAnalysis> {
+        Ok(analyze_source_str_with(source_str, noop)?.1)
+    }
+
+    fn analyze_source_str_with<F, R>(source_str: &str, f: F) -> Result<(R, ModuleAnalysis)>
+    where
+        F: for<'a> FnOnce(&'a SWCModule) -> R,
+    {
+        GLOBALS.set(&Default::default(), || -> Result<(R, ModuleAnalysis)> {
             let module = parse_str(
                 source_str,
                 "test.ts",
                 Syntax::Typescript(Default::default()),
                 Default::default(),
             )?;
-            analyze_module(&module)
+
+            Ok((f(&module.swc_module), analyze_module(&module)?))
         })
+    }
+
+    #[test]
+    fn test_shadow() {
+        let source_str = "const a = null; (function(a) { a; })();";
+        let _module_analysis = analyze_source_str(source_str).expect("module analysis");
+        // TODO: analyze_source_with IdCounter and ensure Module scope has 1 a and Function scope
+        // has 2 a's, and there is nothing else.
     }
 
     #[test]
@@ -1972,5 +2015,73 @@ mod tests {
         }
     }
 
-    // TODO: Test complex dynamic scopes once more: variable comes from External.
+    #[test]
+    fn test_mutli_with3() {
+        let source_str = r#"
+        (function() {
+            with (_) {
+                (function() {
+                    {
+                        (() => a)();
+                    }
+                })();
+            }
+
+            with (_) {
+                (() => {
+                    {
+                        with (_) {
+                            (function() {
+                                {
+                                    a;
+                                }
+                            })();
+                        }
+                    }
+                })();
+            }
+        })();
+        "#;
+        let module_analysis = analyze_source_str(source_str).expect("module analysis");
+        let outermost_function_scope = &module_analysis
+            .scopes_and_variables
+            .top_scope // External
+            .inner[0] // Module
+            .inner[0]; // outermost function() { ... }
+        let with1 = &outermost_function_scope.inner[0]; // first with (_) { ... }
+        let with2 = &outermost_function_scope.inner[1]; // second with (_) { ... }
+        let with3 = &with2.inner[0] // () => { ... }
+            .inner[0] // { ... } between () => { ... } and second with (_) { ... }
+            .inner[0];
+        let scopes_and_variables = &module_analysis.scopes_and_variables;
+        assert_eq!(2, scopes_and_variables.lexical_scopes.len()); // `a` and unresolved `_`.
+        assert_eq!(2, scopes_and_variables.dynamic_scopes.len()); // `a` and second `_`.
+
+        for ((atom, _), lexical_scope) in scopes_and_variables.lexical_scopes.iter() {
+            if &*atom == "_" {
+                lexical_scope.assert_external();
+            } else if &*atom == "a" {
+                lexical_scope.assert_external();
+            } else {
+                panic!("unexpected name");
+            }
+        }
+
+        for ((atom, _), dynamic_scopes) in scopes_and_variables.dynamic_scopes.iter() {
+            if &*atom == "_" {
+                assert_eq!(&vec![with2.scope.clone()], dynamic_scopes);
+            } else if &*atom == "a" {
+                assert_eq!(
+                    &vec![
+                        with1.scope.clone(),
+                        with2.scope.clone(),
+                        with3.scope.clone(),
+                    ],
+                    dynamic_scopes
+                );
+            } else {
+                panic!("unexpected name");
+            }
+        }
+    }
 }
