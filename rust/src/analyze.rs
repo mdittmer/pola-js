@@ -14,7 +14,6 @@ use swc_common::source_map as sm;
 use swc_common::Mark;
 use swc_common::SyntaxContext;
 use swc_ecma_ast as ast;
-use swc_ecma_ast::Module as SWCModule;
 use swc_ecma_visit::Visit;
 use swc_ecma_visit::VisitWith;
 
@@ -102,11 +101,12 @@ pub enum Scope<S: Span> {
     ArrowFunction(BlockStmtOrExpr<S>),
     Function { function: S, block: Option<S> },
     Block(S),
+    For { for_stmt: S, block: Option<S> },
     With { with: S, block: Option<S> },
 }
 
-impl From<&SWCModule> for Scope<sm::Span> {
-    fn from(module: &SWCModule) -> Self {
+impl From<&ast::Module> for Scope<sm::Span> {
+    fn from(module: &ast::Module) -> Self {
         Self::Module(module.span)
     }
 }
@@ -134,6 +134,51 @@ impl From<&ast::Function> for Scope<sm::Span> {
 impl From<&ast::BlockStmt> for Scope<sm::Span> {
     fn from(block: &ast::BlockStmt) -> Self {
         Self::Block(block.span)
+    }
+}
+
+impl From<&ast::ForStmt> for Scope<sm::Span> {
+    fn from(for_stmt: &ast::ForStmt) -> Self {
+        match for_stmt.body.as_ref() {
+            ast::Stmt::Block(block) => Self::For {
+                for_stmt: for_stmt.span,
+                block: Some(block.span),
+            },
+            _ => Self::For {
+                for_stmt: for_stmt.span,
+                block: None,
+            },
+        }
+    }
+}
+
+impl From<&ast::ForInStmt> for Scope<sm::Span> {
+    fn from(for_stmt: &ast::ForInStmt) -> Self {
+        match for_stmt.body.as_ref() {
+            ast::Stmt::Block(block) => Self::For {
+                for_stmt: for_stmt.span,
+                block: Some(block.span),
+            },
+            _ => Self::For {
+                for_stmt: for_stmt.span,
+                block: None,
+            },
+        }
+    }
+}
+
+impl From<&ast::ForOfStmt> for Scope<sm::Span> {
+    fn from(for_stmt: &ast::ForOfStmt) -> Self {
+        match for_stmt.body.as_ref() {
+            ast::Stmt::Block(block) => Self::For {
+                for_stmt: for_stmt.span,
+                block: Some(block.span),
+            },
+            _ => Self::For {
+                for_stmt: for_stmt.span,
+                block: None,
+            },
+        }
     }
 }
 
@@ -336,7 +381,6 @@ impl VariableBinder {
                 // as candidates for dynamic scopes.
                 self.lexical_scopes
                     .insert(id.clone(), self.external_scope.clone());
-                println!("A");
                 self.scope_builder.ancestors(&current_scope)
             } else {
                 // Variable is bound in some lexical scope in this module.
@@ -374,7 +418,6 @@ impl VariableBinder {
                     // candidates for dynamic scopes.
                     let ancestors = self.scope_builder.ancestors(&current_scope);
                     self.lexical_scopes.insert(id.clone(), current_scope);
-                    println!("C");
                     ancestors
                 }
             }
@@ -386,10 +429,7 @@ impl VariableBinder {
             })
             .collect::<Vec<_>>();
             if dynamic_scopes.len() > 0 {
-                if &*id.0 == "a" {
-                    println!("Found dynamic scopes: {:?}", dynamic_scopes);
-                }
-
+                println!("dynamic_scopes = {:?}", dynamic_scopes);
                 match self.dynamic_scopes.entry(id) {
                     Entry::Vacant(entry) => {
                         entry.insert(dynamic_scopes);
@@ -721,16 +761,19 @@ impl Visit for ModuleAnalysisState {
         n.visit_children_with(self)
     }
     fn visit_for_in_stmt(&mut self, n: &ast::ForInStmt) {
-        // TODO: Implement analysis visitor.
-        n.visit_children_with(self)
+        self.scope_builder().push(n);
+        n.visit_children_with(self);
+        self.scope_builder().pop();
     }
     fn visit_for_of_stmt(&mut self, n: &ast::ForOfStmt) {
-        // TODO: Implement analysis visitor.
-        n.visit_children_with(self)
+        self.scope_builder().push(n);
+        n.visit_children_with(self);
+        self.scope_builder().pop();
     }
     fn visit_for_stmt(&mut self, n: &ast::ForStmt) {
-        // TODO: Implement analysis visitor.
-        n.visit_children_with(self)
+        self.scope_builder().push(n);
+        n.visit_children_with(self);
+        self.scope_builder().pop();
     }
     fn visit_function(&mut self, n: &ast::Function) {
         self.scope_builder().push(n);
@@ -917,7 +960,7 @@ impl Visit for ModuleAnalysisState {
         // TODO: Implement analysis visitor.
         n.visit_children_with(self)
     }
-    fn visit_module(&mut self, n: &SWCModule) {
+    fn visit_module(&mut self, n: &ast::Module) {
         self.variable_binder.scope_builder.push(n);
         n.visit_children_with(self);
         self.variable_binder.scope_builder.pop();
@@ -1737,15 +1780,18 @@ mod tests {
 
     use super::analyze_module;
     use super::ModuleAnalysis;
+    use crate::analyze::Scope;
     use crate::parse::parse_str;
     use color_eyre::Result;
     use swc_common::collections::AHashMap;
+    use swc_common::source_map as sm;
     use swc_common::GLOBALS;
     use swc_ecma_ast as ast;
-    use swc_ecma_ast::Module as SWCModule;
     use swc_ecma_parser::Syntax;
     use swc_ecma_visit::Visit;
+    use swc_ecma_visit::VisitWith;
 
+    #[derive(Default)]
     struct IdCounter {
         counts: AHashMap<ast::Id, u32>,
     }
@@ -1765,6 +1811,12 @@ mod tests {
         }
     }
 
+    fn count_ids(swc_module: &ast::Module) -> IdCounter {
+        let mut id_counter = IdCounter::default();
+        swc_module.visit_with(&mut id_counter);
+        id_counter
+    }
+
     fn noop<'a, I>(_: &'a I) {}
 
     fn analyze_source_str(source_str: &str) -> Result<ModuleAnalysis> {
@@ -1773,7 +1825,7 @@ mod tests {
 
     fn analyze_source_str_with<F, R>(source_str: &str, f: F) -> Result<(R, ModuleAnalysis)>
     where
-        F: for<'a> FnOnce(&'a SWCModule) -> R,
+        F: for<'a> FnOnce(&'a ast::Module) -> R,
     {
         GLOBALS.set(&Default::default(), || -> Result<(R, ModuleAnalysis)> {
             let module = parse_str(
@@ -1787,12 +1839,82 @@ mod tests {
         })
     }
 
+    fn id_count_test<F>(source_str: &str, expected_total_count: u32, get_expected_count: F)
+    where
+        F: Fn(&ast::Id, &Scope<sm::Span>) -> u32,
+    {
+        let (id_counts, module_analysis) =
+            analyze_source_str_with(source_str, count_ids).expect("module analysis");
+        assert_eq!(0, module_analysis.scopes_and_variables.dynamic_scopes.len());
+        let variables_and_scopes = &module_analysis.scopes_and_variables.lexical_scopes;
+
+        let mut actual_total_count = 0;
+        for (id, scope) in variables_and_scopes.into_iter() {
+            let actual_count = *id_counts.counts.get(id).expect("id");
+            let expected_count = get_expected_count(id, scope);
+            assert_eq!(expected_count, actual_count);
+            actual_total_count += actual_count;
+        }
+        assert_eq!(expected_total_count, actual_total_count);
+    }
+
     #[test]
     fn test_shadow() {
-        let source_str = "const a = null; (function(a) { a; })();";
-        let _module_analysis = analyze_source_str(source_str).expect("module analysis");
-        // TODO: analyze_source_with IdCounter and ensure Module scope has 1 a and Function scope
-        // has 2 a's, and there is nothing else.
+        id_count_test(
+            "const a = null; (function(a) { a; })();",
+            3,
+            |_: &ast::Id, scope: &Scope<sm::Span>| -> u32 {
+                match scope {
+                    Scope::Module(_) => 1,
+                    Scope::Function { .. } => 2,
+                    scope => {
+                        panic!("unexpected scope in variables_and_scopes: {:?}", scope);
+                    }
+                }
+            },
+        );
+
+        id_count_test(
+            "const a = null; (a => a)();",
+            3,
+            |_: &ast::Id, scope: &Scope<sm::Span>| -> u32 {
+                match scope {
+                    Scope::Module(_) => 1,
+                    Scope::ArrowFunction { .. } => 2,
+                    scope => {
+                        panic!("unexpected scope in variables_and_scopes: {:?}", scope);
+                    }
+                }
+            },
+        );
+
+        id_count_test(
+            "const a = null; { let a; a; }",
+            3,
+            |_: &ast::Id, scope: &Scope<sm::Span>| -> u32 {
+                match scope {
+                    Scope::Module(_) => 1,
+                    Scope::Block { .. } => 2,
+                    scope => {
+                        panic!("unexpected scope in variables_and_scopes: {:?}", scope);
+                    }
+                }
+            },
+        );
+
+        id_count_test(
+            "const a = null; for (let a = 0; a < 2; a++) { a; }",
+            5,
+            |_: &ast::Id, scope: &Scope<sm::Span>| -> u32 {
+                match scope {
+                    Scope::Module(_) => 1,
+                    Scope::For { .. } => 4,
+                    scope => {
+                        panic!("unexpected scope in variables_and_scopes: {:?}", scope);
+                    }
+                }
+            },
+        );
     }
 
     #[test]
