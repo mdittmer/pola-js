@@ -4,7 +4,9 @@ use std::fmt::Debug;
 use crate::parse::Module;
 use crate::parse::SyntaxMetadata;
 use color_eyre::Result;
+use std::hash::Hash;
 use swc_common::collections::AHashMap;
+use swc_common::collections::AHashSet;
 use swc_common::source_map as sm;
 use swc_common::Mark;
 use swc_common::SyntaxContext;
@@ -12,9 +14,9 @@ use swc_ecma_ast as ast;
 use swc_ecma_visit::Visit;
 use swc_ecma_visit::VisitWith;
 
-pub trait Span: Clone + Copy + Debug {}
+pub trait Span: Clone + Copy + Debug + Hash {}
 
-impl<S: Clone + Copy + Debug> Span for S {}
+impl<S: Clone + Copy + Debug + Hash> Span for S {}
 
 #[derive(Debug)]
 pub struct ScopeAnalysis {
@@ -83,13 +85,13 @@ fn ast_expr_span(expr: &ast::Expr) -> sm::Span {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum BlockStmtOrExpr<S: Span> {
     BlockStmt(S),
     Expr(S),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Scope<S: Span> {
     External,
     Module(S),
@@ -338,6 +340,7 @@ pub struct ScopesAndVariables<S: Span> {
     pub top_scope: NestedScope<S>,
     pub lexical_scopes: AHashMap<ast::Id, Scope<S>>,
     pub dynamic_scopes: AHashMap<ast::Id, Vec<Scope<S>>>,
+    pub closure_usages: AHashMap<Scope<S>, AHashSet<ast::Id>>,
 }
 
 #[derive(Debug)]
@@ -347,6 +350,7 @@ struct VariableBinder {
     scope_builder: ScopeBuilder,
     lexical_scopes: AHashMap<ast::Id, Scope<sm::Span>>,
     dynamic_scopes: AHashMap<ast::Id, Vec<Scope<sm::Span>>>,
+    closure_usages: AHashMap<Scope<sm::Span>, AHashSet<ast::Id>>,
 }
 
 impl VariableBinder {
@@ -358,6 +362,7 @@ impl VariableBinder {
             scope_builder,
             lexical_scopes: Default::default(),
             dynamic_scopes: Default::default(),
+            closure_usages: Default::default(),
         }
     }
 
@@ -370,13 +375,14 @@ impl VariableBinder {
         if syntax_context != SyntaxContext::empty() {
             let id = (atom, syntax_context);
             let current_scope = { self.scope_builder.current().scope.clone() };
-            let dynamic_scopes = if syntax_context.has_mark(self.unresolved_mark) {
+            let (lexical_scope, dynamic_scopes) = if syntax_context.has_mark(self.unresolved_mark) {
                 // Unbound varibles are marked with `unresolved_mark`. Use module span to identify
                 // lexical scope, and consider all of current scopes ancestors (including itself)
                 // as candidates for dynamic scopes.
-                self.lexical_scopes
-                    .insert(id.clone(), self.external_scope.clone());
-                self.scope_builder.ancestors(&current_scope)
+                (
+                    self.external_scope.clone(),
+                    self.scope_builder.ancestors(&current_scope),
+                )
             } else {
                 // Variable is bound in some lexical scope in this module.
                 //
@@ -402,35 +408,55 @@ impl VariableBinder {
                             uncommon_current_scope_ancestors,
                         )
                     };
-                    self.lexical_scopes.insert(id.clone(), new_scope);
 
                     // Consider all scopes between (but not including) lexical scope and
                     // (including) current scope as candidates for dynamic scopes.
-                    uncommon_current_scope_ancestors
+                    (new_scope, uncommon_current_scope_ancestors)
                 } else {
                     // Variable is not already bound to a lexical scope. Bind it to the current
                     // scope. Consider all of current scope's ancestors (including itself) as
                     // candidates for dynamic scopes.
                     let ancestors = self.scope_builder.ancestors(&current_scope);
-                    self.lexical_scopes.insert(id.clone(), current_scope);
-                    ancestors
+                    (current_scope.clone(), ancestors)
                 }
-            }
-            .into_iter()
-            .filter_map(|scope| match scope {
-                // Filter candidate dynamic scopes, retaining only `with (expr) { ... }` scopes.
-                with_scope @ Scope::With { .. } => Some(with_scope.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
+            };
+
+            let dynamic_scopes = dynamic_scopes
+                .into_iter()
+                .filter_map(|scope| match scope {
+                    // Filter candidate dynamic scopes, retaining only `with (expr) { ... }` scopes.
+                    with_scope @ Scope::With { .. } => Some(with_scope.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+
+            self.lexical_scopes
+                .insert(id.clone(), lexical_scope.clone());
+
             if dynamic_scopes.len() > 0 {
-                println!("dynamic_scopes = {:?}", dynamic_scopes);
-                match self.dynamic_scopes.entry(id) {
+                match self.dynamic_scopes.entry(id.clone()) {
                     Entry::Vacant(entry) => {
-                        entry.insert(dynamic_scopes);
+                        entry.insert(dynamic_scopes.clone());
                     }
                     Entry::Occupied(mut entry) => {
-                        entry.get_mut().extend(dynamic_scopes.into_iter());
+                        entry.get_mut().extend(dynamic_scopes.clone().into_iter());
+                    }
+                }
+            }
+
+            let mut scopes = dynamic_scopes.iter().collect::<Vec<_>>();
+            scopes.push(&lexical_scope);
+            for scope in scopes.into_iter() {
+                if scope != &current_scope {
+                    match self.closure_usages.entry(current_scope.clone()) {
+                        Entry::Vacant(entry) => {
+                            let closure_usages: AHashSet<ast::Id> =
+                                AHashSet::<ast::Id>::from_iter([id.clone()].into_iter());
+                            entry.insert(closure_usages);
+                        }
+                        Entry::Occupied(mut entry) => {
+                            entry.get_mut().insert(id.clone());
+                        }
                     }
                 }
             }
@@ -442,6 +468,7 @@ impl VariableBinder {
             top_scope: self.scope_builder.build(),
             lexical_scopes: self.lexical_scopes,
             dynamic_scopes: self.dynamic_scopes,
+            closure_usages: self.closure_usages,
         }
     }
 }
@@ -498,12 +525,23 @@ impl Visit for ScopeAnalysisState {
                     self.scope_builder().pop();
                 }
             }
+            Scope::For {
+                block: Some(block), ..
+            } => {
+                if n.span == block {
+                    // No extra block scope for `for (...) { ... }`, just For scope.
+                    n.visit_children_with(self);
+                } else {
+                    self.scope_builder().push(n);
+                    n.visit_children_with(self);
+                    self.scope_builder().pop();
+                }
+            }
             Scope::Function {
                 block: Some(block), ..
             } => {
                 if n.span == block {
-                    // No extra block scope for `function (...) { ... }`, just Function
-                    // scope.
+                    // No extra block scope for `function (...) { ... }`, just Function scope.
                     n.visit_children_with(self);
                 } else {
                     self.scope_builder().push(n);
@@ -550,6 +588,7 @@ impl Visit for ScopeAnalysisState {
     }
 
     fn visit_function(&mut self, n: &ast::Function) {
+        println!("function:  {:#?}", n);
         self.scope_builder().push(n);
         n.visit_children_with(self);
         self.scope_builder().pop();
@@ -576,10 +615,37 @@ impl Visit for ScopeAnalysisState {
 
 #[cfg(test)]
 pub mod test {
+    use super::BlockStmtOrExpr;
     use super::Scope;
     use super::Span;
 
     impl<S: Span> Scope<S> {
+        pub fn strip(&self) -> Scope<()> {
+            match self {
+                Self::ArrowFunction(BlockStmtOrExpr::BlockStmt(_)) => {
+                    Scope::<()>::ArrowFunction(BlockStmtOrExpr::BlockStmt(()))
+                }
+                Self::ArrowFunction(BlockStmtOrExpr::Expr(_)) => {
+                    Scope::<()>::ArrowFunction(BlockStmtOrExpr::Expr(()))
+                }
+                Self::Block(_) => Scope::<()>::Block(()),
+                Self::External => Scope::<()>::External,
+                Self::For { block, .. } => Scope::<()>::For {
+                    for_stmt: (),
+                    block: block.map(|_| ()),
+                },
+                Self::Function { block, .. } => Scope::<()>::Function {
+                    function: (),
+                    block: block.map(|_| ()),
+                },
+                Self::Module(_) => Scope::<()>::Module(()),
+                Self::With { block, .. } => Scope::<()>::With {
+                    with: (),
+                    block: block.map(|_| ()),
+                },
+            }
+        }
+
         pub fn assert_external(&self) {
             match self {
                 Self::External => {}
@@ -614,11 +680,13 @@ mod tests {
     use std::collections::hash_map::Entry;
 
     use super::analyze_scopes;
+    use super::BlockStmtOrExpr;
     use super::Scope;
     use super::ScopeAnalysis;
     use crate::parse::parse_str;
     use color_eyre::Result;
     use swc_common::collections::AHashMap;
+    use swc_common::collections::AHashSet;
     use swc_common::source_map as sm;
     use swc_common::GLOBALS;
     use swc_ecma_ast as ast;
@@ -1040,5 +1108,96 @@ mod tests {
                 panic!("unexpected name");
             }
         }
+    }
+
+    fn a_in_closure_usages_test(source_str: &str, scope: Scope<()>) {
+        let actual_closure_usages = analyze_source_str(source_str)
+            .expect("module analysis")
+            .scopes_and_variables
+            .closure_usages
+            .into_iter()
+            .map(|(scope, ids)| {
+                (
+                    scope.strip(),
+                    ids.into_iter()
+                        .map(|(atom, _syntax_context)| atom.to_string())
+                        .collect::<AHashSet<_>>(),
+                )
+            })
+            .collect::<AHashMap<_, _>>();
+        let mut expected_closure_usages: AHashMap<Scope<()>, AHashSet<String>> = Default::default();
+        let mut expected_usages: AHashSet<String> = Default::default();
+        expected_usages.insert("a".to_string());
+        expected_closure_usages.insert(scope, expected_usages);
+        assert_eq!(expected_closure_usages, actual_closure_usages);
+    }
+
+    fn none_closure_usages_test(source_str: &str) {
+        let actual_closure_usages = analyze_source_str(source_str)
+            .expect("module analysis")
+            .scopes_and_variables
+            .closure_usages
+            .into_iter()
+            .map(|(scope, ids)| {
+                (
+                    scope.strip(),
+                    ids.into_iter()
+                        .map(|(atom, _syntax_context)| atom.to_string())
+                        .collect::<AHashSet<_>>(),
+                )
+            })
+            .collect::<AHashMap<_, _>>();
+        let expected_closure_usages: AHashMap<Scope<()>, AHashSet<String>> = Default::default();
+        assert_eq!(expected_closure_usages, actual_closure_usages);
+    }
+
+    #[test]
+    fn test_closure_usage() {
+        type S = Scope<()>;
+
+        a_in_closure_usages_test(
+            "() => { a; }",
+            S::ArrowFunction(BlockStmtOrExpr::BlockStmt(())),
+        );
+        none_closure_usages_test("(a) => { a; }");
+        a_in_closure_usages_test("() => a", S::ArrowFunction(BlockStmtOrExpr::Expr(())));
+        none_closure_usages_test("(a) => a");
+        a_in_closure_usages_test("{ a; }", S::Block(()));
+        a_in_closure_usages_test(
+            "for (let i = 0; i < 42; i++) { a; }",
+            S::For {
+                for_stmt: (),
+                block: Some(()),
+            },
+        );
+        a_in_closure_usages_test(
+            "for (let i = 0; i < 42; i++) a;",
+            S::For {
+                for_stmt: (),
+                block: None,
+            },
+        );
+        a_in_closure_usages_test(
+            "function x(p, q, r) { a; }",
+            S::Function {
+                function: (),
+                block: Some(()),
+            },
+        );
+        a_in_closure_usages_test("a;", S::Module(()));
+        a_in_closure_usages_test(
+            "with ({}) { a; }",
+            S::With {
+                with: (),
+                block: Some(()),
+            },
+        );
+        a_in_closure_usages_test(
+            "with ({}) a;",
+            S::With {
+                with: (),
+                block: None,
+            },
+        );
     }
 }
